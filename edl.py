@@ -137,7 +137,8 @@ class EDLEntry(Taggable):
 Confirm=False
 
 # Version
-Version = "0.6"
+VERSION = (0,0,6)
+Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Response list
 responses = [ ]
