@@ -1,4 +1,5 @@
 PACKAGE=edl-mod
+EPACKAGE=edl_mod
 CODE=edl.py
 SRC=src/edl/$(CODE)
 CHEATTARGET=/usr/lib/python3.8
@@ -35,7 +36,8 @@ else
 endif
 
 clean:
-	@test -d dist && rm -fR dist
+	@test -d dist && rm -fR dist || true
+	@test -d $(EPACKAGE).egg-info && rm -fR $(EPACKAGE).egg-info || true
 
 cheatinstall:
 	@sudo cp $(SRC) $(CHEATTARGET)/$(CODE)
