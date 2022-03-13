@@ -2,11 +2,11 @@ PACKAGE=edl-mod
 EPACKAGE=edl_mod
 CODE=edl.py
 SRC=src/edl/$(CODE)
-CHEATTARGET=/usr/lib/python3.8
+PYTHONTARGET=python3.8
+CHEATTARGET=/usr/lib/$(PYTHONTARGET)
 VENV=tests
 PLATFORM=linux
 RECFILE=requirements.txt
-PYTHONTARGET=python3.8
 
 .prereqs:
 	@python3 -m pip install --upgrade pip
