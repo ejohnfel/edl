@@ -38,7 +38,7 @@ endif
 
 clean:
 	@test -d dist && rm -fR dist || true
-	@test -d $(EPACKAGE).egg-info && rm -fR $(EPACKAGE).egg-info || true
+	@test -d $(EPACKAGE)*.egg-info && rm -fR $(EPACKAGE)*.egg-info || true
 
 cheatinstall:
 	@sudo cp $(SRC) $(CHEATTARGET)/$(CODE)
