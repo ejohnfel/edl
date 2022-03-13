@@ -43,6 +43,9 @@ cheatinstall:
 	@sudo cp $(SRC) $(CHEATTARGET)/$(CODE)
 	@sudo chmod +rx $(CHEATTARGET)/$(CODE)
 
+cheatrm:
+	@sudo rm $(CHEATTARGET)/$(CODE)
+
 install_test:
 	@python3 -m pip install --index-url https://test.pypi.org/simple --no-deps $(PACKAGE)
 
