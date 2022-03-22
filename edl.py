@@ -1,8 +1,42 @@
 #!/usr/bin/env python3.8
 
-import os
+"""
+EDL - Edit an External Dynamic List
+
+Many firewalls or other security services can import EDL's, or, lists of hosts to block.
+This project can be used as command line tool and as a module. It has the capability to
+to search, add, delete and view the designated list.
+
+This module produces 2 EDL's, a master list and the actual EDL. The actual EDL is one IP
+address per line.
+
+By default, the list only takes IP addresses and will reject anything that else that is NOT
+resolvable into an IP address.
+
+The master list contains the IP, user who submitted the IP, the timestamp, whois owner and
+abuse contact and finally a comment about the block. This information is for accounting purposes
+only (although you might find the abuse contact useful), but the actual EDL is derived from it.
+The actual EDL is just a list of IP's with no commentary or other designators. You must save the
+master EDL and consumable EDL's, although in some places you can set the module to save the
+consumable EDL automatically.
+
+The Exclude file, will take IPs or CIDR ranges.
+
+The reason for IPs only, we discovered a bug in Palo Alto's code for consuming EDL's that *really*
+messed up our PA Cluster.
+
+This module relies on two other modules from the same author, whois-rdap and py-helper-mod.
+You must have them installed for this to work properly.
+
+The module also has a shell mode.
+
+Lastly, the module will also look at the environment variables, EDLMASTER, EDLFILE, EDLEXCLUDES
+and EDLCOMMENTS for the EDL list and any excluded addresses or ranges and the default comment.
+The default comment is only used when one is not provided.
+"""
+
+import os, sys
 import re
-import sys
 import time
 import argparse
 import ipaddress
@@ -12,29 +46,38 @@ import csv
 import getpass
 import subprocess
 import shutil
+import socket
+import cmd
 
 # Ma Stoof
 
 import py_helper as ph
 from py_helper import Msg,DbgMsg,DebugMode,CmdLineMode,ModuleMode
-from py_helper import Taggable, AuditTrail, ValidIP
+from py_helper import Taggable, AuditTrail, ValidIP, IsIPv4, IsIPv6, IsNetwork
 from py_helper import Clear, NewLine, Pause, Menu
 from py_helper import SwapFile, Dump, BackUp, Restore, Touch, TmpFilename
+from py_helper import TimestampConverter
 
 # My module for getting whois info about IPs being placed in the EDL.
 import whois
 
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
+import datetime as dt
 
 #
 # Classes and Support
 #
 
+# Enviroment Variables to look for
+__EnvEDLMaster__ = "EDLMASTER"
+__EnvEDLFile__ = "EDLFILE"
+__EnvEDLExcludes__ = "EDLEXCLUDE"
+__EnvComment__ = "EDLCOMMENT"
+
 # EDL Columns
 Columns = [ "ip","user","timestamp","owner","abuse","comment" ]
 
-# EDl Dictionary Row Template
+# EDL Dictionary Row Template
 EDLRowTemplate = {
 	"ip" : None,
 	"user" : None,
@@ -128,48 +171,424 @@ class EDLEntry(Taggable):
 
 		row = None
 
-		if entry:
-			row = entry.values()
+		if self.entry:
+			row = list(self.entry.values())
 
 		return row
+
+	# Return Internal Dictionary
+	def GetDict(self):
+		"""Return the underlying Dictionary"""
+
+		return self.entry
+
+# EDL Shell
+class EDLShell(cmd.Cmd):
+	# cmd.Cmd attributes
+	intro = "Welcome to the EDL Shell. Type help or ? to list commands.\n"
+	prompt = "edl > "
+	file = None
+
+	# Parsers
+	__parser__ = None
+	# Create Command Parer
+	__create_parser__ = None
+	# Save Parser
+	__save_parser__ = None
+	# Dump Parser
+	__dump_parser__ = None
+
+	# Set Parser
+	def SetParser(self,parser):
+		"""Set Parser"""
+
+		self.__parser__ = parser
+
+	# Init Internal Parsers
+	def InitParsers(self):
+		"""Init Parsers"""
+
+		if self.__create_parser__ == None:
+			self.__create_parser__ = parser = argparse.ArgumentParser(description="File creation sub command")
+			subparser = parser.add_subparsers(help="File creation operations",dest="operation")
+
+			all_parser = subparser.add_parser("all",help="Create all support files")
+			all_parser.add_argument("master",help="Masterfile file path")
+			all_parser.add_argument("edl",help="EDL file path")
+			all_parser.add_argument("excludes",help="Excludes file path")
+
+			master_parser = subparser.add_parser("master",help="Create master file")
+			master_parser.add_argument("master",help="Path to masterfile")
+
+			edl_parser = subparser.add_parser("edl",help="Create edl file")
+			edl_parser.add_argument("edl",help="Path to EDL file")
+
+			ex_parser = subparser.add_parser("excludes",help="Create excludes file")
+			ex_parser.add_argument("excludes",help="Path to excludes file")
+
+		if self.__save_parser__ == None:
+			self.__save_parser__ = parser = argparse.ArgumentParser(description="Save EDL sub command")
+			parser.add_argument("edl",help="EDL file to save to")
+			parser.add_argument("master",help="Master file for EDL")
+
+		if self.__dump_parser__ == None:
+			self.__dump_parser__ = parser = argparse.ArgumentParser(description="Dump file sub command")
+			parser.add_argument("file",nargs="?",help="Dump selected file (master,edl,excludes)")
+
+	# Create All Files
+	def do_create(self,arguments):
+		"""
+		Create Masterfile, EDLFile and exlcudes, if they do not current exist
+		"""
+
+		global EDLMaster, EDLFile, Excludes
+
+		if self.__create_parser__ == None: self.InitParsers()
+
+		arguments = arguments.split(" ")
+
+		args,unknowns = self.__create_parser__.parse_known_args(arguments)
+
+		if args.operation == "all":
+			DbgMsg("Creating ALL - {args.master}, {args.edl}, {args.excludes}")
+
+			CreateMaster(args.master)
+			EDLMaster = args.master
+			ph.Touch(args.edl)
+			EDLFile = args.edl
+			ph.Touch(args.exludes)
+			Excludes = args.excludes
+		elif args.operation == "master":
+			DbgMsg(f"Creating Master {args.master}")
+
+			CreateMaster(args.master)
+			EDLMaster = args.master
+		elif args.operation == "edl":
+			DbgMsg(f"Creating edl {args.edl}")
+
+			ph.Touch(args.edl)
+			EDFile = args.edl
+		elif args.operation == "excludes":
+			DbgMsg(f"Creating Excludes - {args.excludes}")
+
+			ph.Touch(args.excludes)
+			Excludes = args.excludes
+		else:
+			Msg("No operation, all, master, edl, excludes provided, can't do anything")
+
+	# Get or Set Debugmode
+	def do_debugmode(self,arguments):
+		"""Get or set DebugMode"""
+
+		if arguments != None and arguments != "":
+			try:
+				DebugMode(ParseBool(arguments))
+			except:
+				Msg(f"What is {arguments}?")
+		else:
+			Msg(f"Debugmode = {DebugMode()}")
+
+	# Get or Set EDL Master file
+	def do_masterfile(self,arguments):
+		"""Get or Set Masterfile"""
+
+		global EDLMaster
+
+		if arguments != None and arguments != "":
+			EDLMaster = arguments
+
+		Msg(f"EDL Master file is currently {EDLMaster}")
+
+	# Get or Set EDL File
+	def do_edlfile(self,arguments):
+		"""Get or Set EDL File"""
+
+		global EDLFile
+
+		if arguments != None and arguments != "":
+			EDLFile = arguments
+
+		Msg(f"EDL file is currently {EDLFile}")
+
+	# Get or Set Excludes File
+	def do_excludes(self,arguments):
+		"""Get or Set Excludes File"""
+
+		global Excludes
+
+		if arguments != None and arguments != "":
+			Excludes = arguments
+
+		Msg(f"Excludes file is currently {Excludes}")
+
+	# Add Comment To Responses
+	def do_comment(self,arguments):
+		"""Add comments to responses"""
+
+		global Responses
+
+		arguments = arguments.replace("'","").replace('"',"")
+
+		if not arguments in Responses:
+			AddResponse(arguments)
+			Msg(f"Added {arguments}")
+		else:
+			Msg("Already exists in list")
+
+	# Show Comments
+	def do_comments(self,arguments):
+		"""Show comments"""
+
+		global Responses
+
+		Msg("\nComments\n===========")
+
+		count = 1
+
+		for response in Responses:
+			Msg("{}. {}".format(count,response))
+			count += 1
+
+		NewLine()
+
+	# Get or set audit file
+	def do_auditfile(self,arguments):
+		"""Set or Get Audit File"""
+
+		global AuditFile
+
+		if arguments != None and arguments != "":
+			AuditFile = arguments
+
+		Msg(f"Audit file is currently {AuditFile}")
+
+	# Do DNS Query for Arguments.
+	def do_dns(self,arguments):
+		"""Do DNS Check For Arguments"""
+
+		hosts = re.split("\s+",arguments)
+
+		iplist = HostIPCheck(hosts)
+
+		for ip in iplist:
+				Msg(f"{ip}")
+
+	# Command handlers
+
+	# Save EDL File
+	def do_save(self,arguments):
+		"""Save EDL File"""
+
+		global EDLMaster, EDLFile
+
+		if self.__save_parser__ == None: self.InitParsers()
+
+		arguments = arguments.split(" ")
+
+		args,unknowns = self.__save__parser__.parse_known_args(arguments)
+
+		edlfile = EDLFIle if args.edl == None else args.edl
+		masterfile = EDLMaster if args.master == None else args.master
+
+		Save(edlfile,masterfile)
+
+	# Add To EDL
+	def do_add(self,arguments):
+		"""Add Entry to EDL"""
+
+		global Responses
+
+		params = list()
+
+		params.append("add")
+
+		args = ph.ParseDelimitedString(arguments)
+
+		params.extend(args)
+
+		args, unknowns = self.__parser__.parse_known_args(params)
+
+		comment = args.comment
+
+		if CmdLineMode() and comment in [ None, "" ]:
+			comment = GetComment()
+		elif len(Responses) > 0:
+			comment = Responses[0]
+		else:
+			comment = "No comment provided"
+
+		entries = Add(args.host,comment=args.comment)
+
+		for entry in entries:
+			Msg(f"Added {entry}")
+
+	# Remove From EDL
+	def do_remove(self,arguments):
+		"""Remove Entry From EDL"""
+
+		params = list()
+
+		params.append("remove")
+
+		params.extend(re.split("\s+",arguments))
+
+		args = __parser__.parse_args(params)
+
+		removed = Remove(args.host)
+
+	# Remove Alias
+	def do_del(self,arguments):
+		"""Remove Alias"""
+
+		self.do_remove(arguments)
+
+	# Search From EDL
+	def do_search(self,arguments):
+		"""Search EDL"""
+
+		params = list()
+
+		params.append("search")
+
+		args = ph.ParseDelimitedString(arguments)
+
+		params.extend(args)
+
+		args = ParseArgs(arguments=params)
+
+		results = Search(args.search_str,by_type=args.by_type)
+
+		for result in results:
+			Msg(result)
+
+	# Dump File
+	def do_dump(self,arguments):
+		"""Dump File"""
+
+		global EDLMaster,EDLFile,Excludes
+
+		if self.__dump_parser__ == None: self.InitParsers()
+
+		args,unknowns = self.__dump_parser__.parse_known_args(arguments.split(" "))
+
+		file = None
+
+		if args.file == "master":
+			file = EDLMaster
+		elif args.file == "edl":
+			file = EDLFile
+		elif args.file == "excludes":
+			file = Excludes
+		else:
+			Msg(f"Don't know what '{args.file}' is")
+
+		if file:
+			if os.path.exists(file):
+				ph.Page(file)
+			else:
+				Msg(f"File, {file} does not presently exist")
+
+	# Show Data Information
+	def do_info(self,args):
+		"""Show Information About Data"""
+
+		global EDLMaster, EDLFile, Excludes, AuditFile, DMEDLFile
+		global MaxAge, LastAdd, Responses, Version
+		global __EnvEDLMaster__, __EnvEDLFile__, __EnvEDLExcludes__,__EnvComment__
+
+		def GetInfo(filename):
+			msg = "does not presently exist"
+
+			if os.path.exists(filename):
+				value = ph.BestUnits(os.path.getsize(filename),units=1)
+				lines = ph.LineCount(filename=filename)
+
+				msg = f"{value} {lines} lines"
+
+			return msg
+
+		Msg("{:<20} : {}".format("Version",Version))
+		Msg("{:<20} : {} {}".format("EDL Master File",EDLMaster,GetInfo(EDLMaster)))
+		Msg("{:<20} : {} {}".format("EDL File",EDLFile,GetInfo(EDLFile)))
+		Msg("{:<20} : {} {}".format("Exclude File",Excludes,GetInfo(Excludes)))
+		Msg("{:<20} : {} {}".format("Test EDL File",DMEDLFile,GetInfo(DMEDLFile)))
+		Msg("{:<20} : {}".format("Audit File",AuditFile))
+		Msg("{:<20} : {} days".format("MaxAge",MaxAge.days))
+		Msg("{:<20} : {}".format("LastAdd",LastAdd))
+		Msg("{:<20} : {}".format("EDL Master Env",os.environ.get(__EnvEDLMaster__,"Not present")))
+		Msg("{:<20} : {}".format("EDL File Env",os.environ.get(__EnvEDLFile__,"Not Present")))
+		Msg("{:<20} : {}".format("Excludes Env",os.environ.get(__EnvEDLExcludes__,"Not Present")))
+		Msg("{:<20} : {}".format("Comment Env",os.environ.get(__EnvComment__,"Not Present")))
+		Msg("{:<20} : {}".format("Responses",""))
+		for comment in Responses:
+			Msg(f"\t{comment}")
+
+	# Exit
+	def do_quit(self,args):
+		"""Exit Shell"""
+		return True
+
+	# Exit
+	def do_exit(self,arguments):
+		"""Exit Shell"""
+		return True
+
+#
+# Variables and Constants
+#
 
 # Ask before sumbit
 Confirm=False
 
+# Autosave EDLFIle
+AutoSave = False
+
 # Version
-VERSION = (0,0,6)
+VERSION=(0,0,7)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
+# Parser
+__Parser__ = None
+
 # Response list
-responses = [ ]
+Responses = list()
 
 # Test File
 DMEDLFile="/tmp/edl.test.txt"
+# EDL Master File
+EDLMaster = "/tmp/edlmaster.txt"
 # EDL File
+#EDLFile="/tmp/edl.txt"
 EDLFile="/srv/storage/data/edl.txt"
 # Exclude File
+#Excludes="/tmp/edl.excludes"
 Excludes="/srv/storage/data/edl-excl.txt"
 # Audit Trail File
 AuditFile=None
 
-# Cull Interval
+# Acceptable IPs
+NoIPv6 = False
+
+# Cull MaxAge
 # See Unix 'man date' for details on the -d option for format of this string
-INTERVAL=timedelta(days=90)
+MaxAge=timedelta(days=90)
 
 # Last added item
-LASTADD=""
-
-# Skip Flag
-SKIPFLAG=0
+LastAdd=""
 
 #
-# State Initializers
+# Lambdas
 #
 
-random.seed()
+# Parse Text String Into Boolean Value
+ParseBool = lambda S : False if S.lower() == "false" else True
 
 #
 # Functions
+#
+
+#
+# Support Functions
 #
 
 # Add To Audit Trail
@@ -179,24 +598,142 @@ def Audit(message):
 	if AuditFile:
 		AuditTrail(AuditFile,message)
 
-# Determine if supplied IP address is in the excludes list
-def Excluded(ipstr):
+# Check Host/IP Submitted
+def HostIPCheck(host):
 	"""
-	Determine if the supplied IP string appears inside the exlude file, if an exclude file is supplied and exists.
+	Check Host String, if IP, pass through, if not, attempt DNS resolution.
+	If resolution fails, return None
+
+	"""
+
+	hosts = None
+	iplist = list()
+
+	if not type(host) is list:
+		hosts = [ host ]
+	else:
+		hosts = host
+
+	for host in hosts:
+		if not ValidIP(host):
+			try:
+				# host = socket.gethostbyname(host)
+
+				records = socket.getaddrinfo(host,None)
+
+				for record in records:
+					ip = record[4][0]
+
+					if not ip in iplist:
+						iplist.append(ip)
+			except:
+				# Pass errors silently
+				pass
+		else:
+			iplist.append(host)
+
+	return iplist
+
+# Create or Convert Timestamp
+def Timestamp(timestamp=None):
+	"""Create or Convert Timestamp"""
+
+	tsc = TimestampConverter()
+
+	reg_ex = "^\d{1,2}/\d{1,2}/\d{4}$\s+ \d{1,2}\:\d{1,2}\:\d{1,2}\s+([aA]|[pP])[mM]$"
+	fmt = r"%m/%d/%Y %H:%M:%S %p"
+
+	tsc.AddTimeFormat(reg_ex,fmt)
+
+	dt = None
+
+	if timestamp == None:
+		dt = datetime.now()
+		timestamp = dt.strftime(fmt)
+	elif type(timestamp) is datetime:
+		dt = timestamp
+		timestamp = timestamp.strftime(fmt)
+	elif type(timestamp) is str:
+		tsc = ph.TimestampConverter()
+
+		dt = tsc.ConvertTimestamp(timestamp)
+		timestamp = dt.strftime(fmt)
+
+	return timestamp,dt
+
+# Preset Comment for adds
+def AddResponse(comment):
+	"""
+	Add a comment to the cached comment list
+	"""
+	global Responses
+
+	if not comment in Responses:
+		Responses.append(comment)
+
+#
+# Business Functions
+#
+
+# Save Consumable EDL
+def Save(edlfile=None,masterfile=None):
+	"""Save Consumable EDL"""
+
+	global EDLMaster, EDLFile
+
+	if masterfile == None: masterfile = EDLMaster
+	if edlfile == None: edlfile = EDLFile
+
+	with open(masterfile,"r",newline="") as csvfile:
+		reader = csv.DictReader(csvfile)
+
+		with open(edlfile,"w") as f_out:
+			for row in reader:
+				ip = row["ip"]
+
+				f_out.write(f"{ip}\n")
+
+# Create Master File
+def CreateMaster(masterfile=None):
+	"""
+	Create Master File
+
+	Since the master file is a CSV with a header, this function will create
+	an empty CSV with header.
+	"""
+
+	global EDLMaster, Columns
+
+	if masterfile == None: masterfile = EDLMaster
+
+	DbgMsg(f"Masterfile = {masterfile}")
+
+	with open(masterfile,"w",newline='') as csvfile:
+		writer = csv.DictWriter(csvfile,fieldnames=Columns)
+
+		DbgMsg("Writing header")
+		writer.writeheader()
+
+# Determine if supplied IP address is in the excludes list
+def Excluded(ip,exclude_file=None):
+	"""
+	Determine if the supplied IP string appears inside the exclude file, if an exclude file is supplied and exists.
 	"""
 
 	global Excludes
 
 	excluded = False
 
-	if Excludes and os.path.exists(Excludes):
-		with open(Excludes,"rt") as excludes:
+	if exclude_file == None: exclude_file = Excludes
+
+	if ValidIP(ip) and exclude_file and os.path.exists(exclude_file):
+		with open(exclude_file,"rt") as excludes:
 			for entry in excludes:
 				cleaned = entry.strip().split("#")
 				item = cleaned[0].strip()
 
-				if re.search(ph.NETIPv4_Exp,item) or re.search(ph.NETIPv6_Exp,item):
-					ip = ipaddress.ip_address(ipstr)
+				if IsNetwork(item):
+					ip = ipaddress.ip_address(ip)
 
 					net = ipaddress.ip_network(item)
 
@@ -204,240 +741,175 @@ def Excluded(ipstr):
 						excluded = True
 						Audit(aud_msg.format(ip))
 						break
-				elif item == ipstr:
+				elif item == ip:
 					excluded = True
 					break
 
 	return excluded
 
-# Preset Comment for adds
-def AddResponse(comment):
-	"""
-	Add a comment to the cached comment list
-	"""
-	responses.append(comment)
-
-# Show Comments List
-def ShowComments():
-	"""
-	Show currently cached comments"
-	"""
-
-	global responses
-
-	Msg("\nComments\n===========")
-
-	count = 1
-
-	for response in responses:
-		Msg("{}. {}".format(count,response))
-		count += 1
-
-	NewLine()
-
-# Direct Edit EDL List
-def DirectEditEDL():
-	"""
-	Direct edit the EDL
-	Only active in CmdLineMode
-	"""
-	global EDLFile
-
-	if ModuleMode(): return
-
-	reply = input("====> WARNING : Direct Editting is discouraged continue (y/N)? ")
-
-	if reply == "y":
-		BackUp(EDLFile)
-
-		# Execute nano with the edl file
-		subprocess.call(["nano",EDLFile])
-		Audit("EDL File was editted manually")
-
 # Find Single Entry
-def FindEntry(ip):
+def FindEntry(ip,masterfile=None):
 	"""
 	Find a Block Entry in the EDL
 	"""
 
-	global EDLFile
+	global EDLMaster
+
+	if masterfile == None: masterfile = EDLMaster
 
 	entry = None
 
-	with open(EDLFile,newline='') as csvfile:
-		reader = csv.DictReader(csvfile,Columns)
+	if ValidIP(ip):
+		with open(masterfile,newline='') as csvfile:
+			reader = csv.DictReader(csvfile,Columns)
 
-		for row in reader:
-			if ip == row["ip"]:
-				entry = list(row.values())
-				break
+			for row in reader:
+				if ip == row["ip"]:
+					entry = list(row.values())
+					break
 
 	return entry
 
-# Search for item in Exclude List
-def SearchExclude(entry):
-	"""
-	Search for, and return, exclude item in the exlude file (if defined and exists)
-	"""
-	global Excludes
-
-	found = False
-
-	if Excludes and os.path.exists(Excludes):
-		with open(Excludes,"rt") as excludes:
-			for line in excludes:
-				items = line.split("#")
-
-				if entry in items[0].strip():
-					found = True
-					break
-
-	return found
-
-
 # Search For Block
-def Search(src_ip,exit_early=False,silent=False):
+def Search(search_str,by_type="ip",exit_early=False,silent=False,masterfile=None):
 	"""Search the EDL for an existing block"""
 
-	global EDLFile
+	global EDLMaster, Columns
 
-	hits = []
+	if masterfile == None: masterfile = EDLMaster
 
-	with open(EDLFile, newline="") as csvfile:
+	hits = list()
+
+	tsc = TimestampConverter()
+
+	with open(masterfile, newline="") as csvfile:
 		reader = csv.DictReader(csvfile,Columns)
 
 		for row in reader:
-			if src_ip == row["ip"]:
+			if by_type != "timestamp" and search_str == row[by_type]:
 				values = list(row.values())
 				hits.append(values)
 
-				if not silent: Msg(values)
-
 				if exit_early: break
+			elif by_type == "timestamp":
+				sts = tsc.ConvertTimestamp(search_str)
+				rts = tsc.ConvertTimestamp(row[by_type])
+
+				if sts != None and rts != None:
+					if sts == rts:
+						values = list(row.values())
+						hits.append(values)
+
+						if exit_early: break
 
 	return hits
 
-# Get Comment
-def GetComment():
-	"""Get the currently cached comments"""
-
-	global responses
-	global SKIPFLAG # Why did I make this global?
-
-	if ModuleMode(): return
-
-	SKIPFLAG=0
-
-	comment = None
-
-	if len(responses) > 0:
-		Msg("q|quit To Quit\nEnter any string for new comment\nOr select provided comment(s)\n=============")
-
-		eo = { "q":"Quit", }
-		reply = Menu(responses,extra_options=eo,no_match=True)
-
-		if reply and not reply == "q":
-			if reply == "":
-				reply = "No comment"
-
-			if not reply in responses:
-				AddResponse(reply)
-
-			comment = reply
-	else:
-		comment = input("Enter comment : ")
-
-		if comment == "":
-			comment = "No Comment"
-
-		AddResponse(comment)
-
-	return comment
-
 # Append TO EDL
-def AppendToEDL(entry):
+def AppendToEDL(entry,masterfile=None,edlfile=None):
 	"""
 	Append new entry to the EDL
 	"""
-	global EDLFile
+	global EDLMaster, Columns, AutoSave, NoIPv6
+
+	DbgMsg("Entering AppendToEDL")
+
+	if masterfile == None: masterfile = EDLMaster
 
 	success = True
 
-	if ValidIP(entry[0]):
-		if type(entry) == EDLEntry:
-			entry = entry.GetRow()
-		elif type(entry) == dict:
-			entry = entry.values()
+	if type(entry) is EDLEntry:
+		entry = entry.GetDict()
+	elif type(entry) is list:
+		entry = dict(zip(Columns,entry))
+	elif type(entry) is dict:
+		pass
 
-		with open(EDLFile,"a",newline='') as csvfile:
-			writer = csv.writer(csvfile)
+	DbgMsg(str(entry))
 
+	ip = entry["ip"]
+
+	if IsIPv4(ip) or (IsIPv6(ip) and not NoIPv6):
+		with open(masterfile,"a",newline='') as csvfile:
+			writer = csv.DictWriter(csvfile,Columns)
 			writer.writerow(entry)
 
-		if Audit: Audit("Appended {} to edl".format(entry))
+		if Audit: Audit("Appended {} to edl master".format(entry))
+		if AutoSave: Save(edlfile,masterfile)
 	else:
+		DbgMsg(f"Rejected {ip}, NoIPv6 = {NoIPv6}")
 		success = False
 
 	return success
 
-# Add Block
-def Add(ip,user=None,timestamp=None,owner=None,abuse=None,comment=None,simulate=False,as_incident=None):
-	"""
-	Add IP to EDL list, if not excluded and does not already exist in the list.
-	If an attempt is made to add something exclude, or existing, and an audit trail
-	is enabled, these are recorded.
-	The output indicates the EDL entry, whether the IP was invalid and whether it
-	is existing or new.
-	If you expect to add entries quickly, the you must delay the add for about 4 seconds
-	a WHOIS throttles queries.
-	If module is in CmdLineMode, this function will prompt the user.
-	The simulate parameter carries out every thing except adding the IP to the EDL.
-	The EDL is not backed up automatically before adds. If you want this, you must back it up yourself
-	before adding.
-	"""
-	global Confirm, SKIPFLAG, LASTADD
+# Add IP (or list of IPs, or DNS Names) To EDL Master
+def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,nosleep=False,masterfile=None,edlfile=None):
+	"""Add Host/List of Hosts/DNS names  to EDL Master"""
 
-	entry = None
-	existing = False
-	invalid = True
+	global LastAdd, Responses
 
-	aud_excluded_msg = "Attempt to add {} to EDL was stopped because it has been excluded"
-	aud_exists_msg = "Attempt to add {} to EDL was stopped because it already exists"
+	if user == None:
+		user = getpass.getuser()
 
-	if ValidIP(ip):
-		invalid = False
-		# Process
-		# 1.a Determine if it exists in EDL already or in exclude list
-		# 1.b If exists, prompt user to see it (if not in module mode), return (True,entry)
-		# 1.c If exists, and in Module mode, prep return tuple (False,new_entry)
-		# 2.a If not exists and NOT in module mode, prompt for comment
-		# 2.b If prompt, prompt with review
-		# 2.c If accepted (or not prompted) add to EDL, otherwise (False,None)
+	timestamp,dt = Timestamp(timestamp)
 
-		# if exclude, bump
-		if not Excluded(ip):
-			existing_entry = FindEntry(ip)
+	if comment == None:
+		if len(Responses) > 0:
+			comment = Responses[0]
+		else:
+			comment = "No comment supplied"
 
-			if existing_entry:
-				existing = True
-				entry = existing_entry
+	results = list()
+	hosts = None
 
-				Audit(aud_exists_msg.format(ip))
-			else:
-				if user == None:		# Get user if not provided
-					user = getpass.getuser()
+	if type(host) is list:
+		hosts = host
+	else:
+		hosts = [ host ]
 
-				if CmdLineMode() and comment == None:	# Get comment, if not provided
-					comment = GetComment()
-				elif comment == None:
-					comment = 'No Comment'	# If in ModuleMode and no comment supplied
+	sanity_check = list()
 
-				if timestamp == None:
-					now = datetime.now()
-					timestamp = now.strftime(r"%m/%d/%Y %H:%M:%S %P")
+	# Check for DNS names
+	for host in hosts:
+		if not ValidIP(host):
+			ips = HostIPCheck(host)
 
-				if abuse == None or owner == None:
-					response = whois.GetIPInfo(ip)
+			sanity_check.extend(ips)
+		else:
+			sanity_check.append(host)
+
+	hosts = sanity_check
+
+	# Builds a list of 5-tuples (invalid-flag,exists-flag,entry,excluded-flag,edl_entry)
+	for host in hosts:
+		# Determine if Excluded
+		# Determine if already in EDL
+		# If abuse/owner None, do Whois
+		# if comment None, try to get comment
+		# Create EDLEntry, give to AppendToEDL
+
+		entry = {
+			"ip" : host,
+			"user" : user,
+			"timestamp" : timestamp,
+			"owner" : None,
+			"abuse" : None,
+			"comment" : comment
+			}
+
+		result = {
+			"invalid" : False,
+			"exists" : False,
+			"entry" : list(entry.values()),
+			"excluded" : False,
+			"edl_entry" : None
+			}
+
+		if not Excluded(host):
+			found = FindEntry(host)
+
+			if found == None:
+				if owner == None or abuse == None:
+					response = whois.GetIPInfo(host)
 
 					if response and response[0] == 200:
 						owner = response[1] if len(response) > 1 and response[1] else "unknown"
@@ -446,37 +918,37 @@ def Add(ip,user=None,timestamp=None,owner=None,abuse=None,comment=None,simulate=
 						owner = "unknown" if owner == None else owner
 						abuse = "" if abuse == None else abuse
 
-				entry = [ ip, user, timestamp, owner, abuse, comment ]
+				entry["owner"] = owner
+				entry["abuse"] = abuse
 
-				if CmdLineMode() and Confirm:
-					Msg(entry)
+				edl_entry = EDLEntry(entry)
 
-					reply = Pause("Add to EDL (y/N)? ")
-
-					if reply == "y" and not simulate:
-						AppendToEDL(entry)
-				elif not simulate:
-					AppendToEDL(entry)
+				AppendToEDL(edl_entry,masterfile=masterfile,edlfile=edlfile)
+				result["entry"] = list(entry.values())
+				result["edl_entry"] = edl_entry
+				results.append(tuple(result.values()))
+			else:
+				# Exists
+				result["exists"] = True
+				result["entry"] = list(found)
+				result["edl_entry"] = EDLEntry(found)
+				results.append(tuple(result.values()))
 		else:
-			Audit(aud_excluded_msg.format(ip))
-			entry = [ ip, user, timestamp, None, None, "excluded" ]
-			existing = True
-	else:
-		Msg("{} not a valid IP".format(ip))
+			# Excluded
+			entry["excluded"] = True
+			results.append(tuple(entry.values()))
 
-	if not entry == None:
-		LASTADD = entry
+		if len(hosts) > 1 and not nosleep:
+			time.sleep(4)
 
-	if as_incident != None and as_incident:
-		entry = EDLEntry(entry,is_new=(not existing))
-
-	return [ invalid, existing, entry ]
+	return results
 
 # Bulk Add
-def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,simulate=False):
+def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,masterfile=None,edlfile=None):
 	"""
 	Bulk add file of IP address to EDL. The file should be on IP per line.
 	"""
+
 	success = True
 
 	adds = []
@@ -484,7 +956,7 @@ def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,si
 	if os.path.exists(fname):
 		with open(fname,"rt") as ip_list:
 			for line in ip_list:
-				invalidFlag, existingFlag, entry = Add(line.strip(),user,timestamp,owner,abuse,comment,simulate=simulate)
+				invalidFlag, existingFlag, entry, excluded, edl_entry = Add(line.strip(),user,timestamp,owner,abuse,comment,nosleep=True,masterfile=masterfile,edlfile=edlfile)
 
 				if existingFlag or invalidFlag: # If exists or is invalid, skip the sleep interval
 					continue
@@ -494,70 +966,32 @@ def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,si
 				# Must sleep to avoid WHOIS from Rate Limiting us
 				time.sleep(4)
 	else:
-		Msg("File, {}, does not exist".format(fname))
 		success = False
 
 	return success, adds
 
-# Rolling Adds
-def RollingAdd(simulate=False):
-	"""
-	Designed to be a command line feature, this is essentially an EDL shell.
-	You can add IP's, show the current list of input comments, directly edit and dump the EDL.
-	Only active during CmdLineMode.
-	"""
-	global Confirm, LASTADD
-
-	success = False
-
-	if CmdLineMode():
-		success = True
-
-		while True:
-			Msg("Type dump, to dump\nType clear to clear screen\nType comments to see comment list\nBlank line to quit\n================")
-			reply = input("IP To Block : ")
-
-			args = None
-
-			if " " in reply:
-				reply, args = reply.split(" ",maxsplit=1)
-
-			NewLine()
-
-			if reply == "" or reply == "q" or reply == "quit":
-				break
-			elif reply == "rm" or reply == "remove":
-				Remove(args)
-			elif reply == "dump":
-				Dump(EDLFile)
-			elif reply == "comments":
-				ShowComments()
-			elif reply == "edit":
-				DirectEditEDL()
-			elif reply == "clear":
-				Clear()
-			else:
-				invalidFlag, existingFlag, entry = Add(reply,simulate=simulate)
-
-	return success
-
 # Remove Block
-def Remove(ip,removal_message="{} was removed from the EDL"):
+def Remove(hosts,masterfile=None,edlfile=None):
 	"""
-	Remove an IP from the EDL if an audit trail is defined, it is recorded in the audit trail.
-	The EDL is backed  up before changes
+	Remove an IP from the EDL Master if an audit trail is defined, it is recorded in the audit trail.
+	The EDL is backed up before changes
 	"""
-	global EDLFile,Columns
+	global EDLMaster, EDLFile, Columns, AutoSave
+
+	if masterfile == None: masterfile = EDLMaster
+	if edlfile == None: edlfile = EDLFile
 
 	hitcount = 0
 
 	TMP=TmpFilename(".edl_rem")
 
-	# Backup Existing EDLFile
-	BackUp(EDLFile)
+	# Backup Existing EDLMaster
+	BackUp(masterfile)
 
-	# Open Existing EDL File
-	with open(EDLFile,newline='') as csvfile:
+	hosts = HostIPCheck(hosts)
+
+	# Open Existing EDL Master
+	with open(masterfile,newline='') as csvfile:
 		reader = csv.DictReader(csvfile,Columns)
 
 		# Open Temp file
@@ -567,28 +1001,32 @@ def Remove(ip,removal_message="{} was removed from the EDL"):
 			# Read in existing entries and compare to the item(s) we want removed
 			# Only copy non-hits to temp file
 			for row in reader:
-				if type(ip) is list:
-					if not row["ip"] in ip:
+				if type(hosts) is list:
+					if not row["ip"] in hosts:
 						r = list(row.values())
 						writer.writerow(r)
 					else:
+						Audit(f"{row['ip']} removed from EDL")
 						hitcount += 1
-				elif row["ip"] != ip:
+				elif row["ip"] != hosts:
 					r = list(row.values())
 					writer.writerow(r)
 				else:
+					Audit(f"{row['ip']} removed from EDL")
 					hitcount += 1
 
 	if hitcount == 0:
 		os.remove(TMP)
 	else:
-		SwapFile(TMP,EDLFile)
-		Audit(removal_message.format(ip))
+		SwapFile(TMP,masterfile)
+
+		if AutoSave:
+			Save(edlfile,masterfile)
 
 	return hitcount
 
 # Bulk Remove
-def BulkRemove(fname):
+def BulkRemove(fname,masterfile=None,edlfile=None):
 	"""
 	Given a file with one IP per line, remove the given IPs from the EDL if they are in there
 	"""
@@ -601,15 +1039,14 @@ def BulkRemove(fname):
 			for ip in ip_list:
 				items.append(ip.strip())
 
-			Remove(items,"{} removed during bulk remove")
+			Remove(items,masterfile,edlfile)
 	else:
 		success = False
-		Msg("File, {}, does not exist".format(fname))
 
 	return success
 
 # Replace IP Record in EDL
-def Replace(fields):
+def Replace(fields,masterfile=None,edlfile=None):
 	"""
 	Replace an EDL line (defined by the blocked IP), with the new supplied one.
 	"""
@@ -617,50 +1054,31 @@ def Replace(fields):
 
 	DbgMsg(fields)
 
-	Add(fields[0],fields[1],fields[2],fields[3],fields[4],fields[5])
-
-# Edit One Entry
-def EditEntry(ip):
-	"""
-	Edit a single entry of the EDL (based on the IP).
-	Only active in CmdLineMode
-	"""
-	entry = FindEntry(ip)
-
-	if entry and CmdLineMode():
-		DbgMsg(entry)
-
-		TMP = TmpFilename()
-
-		ip = entry["ip"]
-		old_line = ",".join(list(entry.values())[1:])
-
-		with open(TMP,"wt") as tmpfile:
-			print(old_line,file=tmpfile)
-
-		subprocess.call([ "nano", TMP ])
-
-		new_line = ""
-
-		with open(TMP,"rt") as tmpfile:
-			new_line = tmpfile.read().strip()
-
-		if old_line != new_line:
-			fields = new_line.split(",")
-			fields.insert(0,ip)
-
-			Replace(fields)
-			Audit("{} entry was manually editted - was '{}'".format(ip,old_line))
+	Add(fields[0],fields[1],fields[2],fields[3],fields[4],fields[5],masterfile=masterfile,edlfile=edlfile)
 
 # Cull Records
-def Cull():
+def Cull(max_age=None,masterfile=None,edlfile=None):
 	"""
-	Using the module level INTERVAL, remove entries from the EDL, older then the interval.
+	Using the module level MaxAge, remove entries from the EDL, older then the interval.
 	"""
 
-	global EDLFile, INTERVAL, Columns
+	global EDLMaster, MaxAge, Columns
 
-	too_old = datetime.now() - INTERVAL
+	if masterfile == None: masterfile = EDLMaster
+
+	if max_age == None:
+		max_age = MaxAge
+	else:
+		if type(max_age) == str and max_age.isdigit():
+			max_age = timedelta(days=int(max_age))
+		elif type(max_age) == int:
+			max_age = timedelta(days=max_age)
+		elif type(max_age) == timedelta:
+			pass
+		else:
+			max_age = MaxAge
+
+	too_old = datetime.now() - max_age
 
 	matches = list()
 
@@ -672,7 +1090,7 @@ def Cull():
 
 	ts = None
 
-	with open(EDLFile,newline='') as csvfile:
+	with open(masterfile,newline='') as csvfile:
 		reader = csv.DictReader(csvfile,Columns)
 
 		for row in reader:
@@ -714,71 +1132,97 @@ def Cull():
 
 	if len(matches) > 0:
 		DbgMsg(f"Removing old items")
-		if not DebugMode(): Remove(matches,"{} culled")
+		if not DebugMode(): Remove(matches,masterfile,edlfile)
 
-	Msg(f"{lines} processed")
+	DbgMsg(f"{lines} processed, {len(matches)} matched")
 
 	if DebugMode():
-		Dump(EDLFile)
+		Dump(masterfile)
 
-	return len(matches)
+	return matches
+
+# Search for item in Exclude List
+def SearchExclude(entry,exclude_file=None):
+	"""
+	Search for, and return, exclude item in the exlude file (if defined and exists)
+	"""
+	global Excludes
+
+	if exclude_file == None: exclude_file = Excludes
+
+	found = False
+
+	if exclude_file and os.path.exists(exclude_file):
+		with open(exclude_file,"rt") as excludes:
+			for line in excludes:
+				items = line.split("#")
+
+				if entry in items[0].strip():
+					found = True
+					break
+
+	return found
 
 # Add Item to Exclude List
-def AddExclude(item,comment=None):
+def AddExclude(item,comment=None,exclude_file=None):
 	"""
 	Add an IP or network exclude to the exclusion list
 	"""
 	global Excludes
 
+	if exclude_file == None: exclude_file = Excludes
+
 	success = True
 
-	BackUp(Excludes)
+	BackUp(exclude_file)
 
-	if SearchExclude(item):
+	if SearchExclude(item,exclude_file):
 		Msg("{} already in list".format(item))
 		success = False
 	else:
-		with open(Excludes,"at") as excludes:
+		with open(exclude_file,"at") as excludes:
 			line = item
 
 			if comment:
 				line += (" # " + comment)
 
 			excludes.write(line + "\n")
-			Msg("{}, added".format(line))
+			DbgMsg("{}, added".format(line))
 			Audit("{} added to excludes".format(item))
 
 	return success
 
 # Remove Excluded IP/Range
-def RemoveExclude(item):
+def RemoveExclude(item,exclude_file=None):
 	"""
 	Remove the given IP or subnet from the excludes list
 	"""
 	global Excludes
 
+	if exclude_file == None: exclude_file = Excludes
+
 	success = False
 
 	tmp = TmpFilename()
 
-	BackUp(Excludes)
+	BackUp(exclude_file)
 
 	hits = 0
 
 	with open(tmp,"wt") as tmpfile:
-		with open(Excludes,"rt") as excludes:
+		with open(exclude_file,"rt") as excludes:
 			for line in excludes:
 				if item in line:
 					hits += 1
-					Msg("{}, being removed".format(line))
+					DbgMsg("{}, being removed".format(line))
 					Audit("{} removed from excludes".format(item))
 				else:
 					line = line.strip()
 					tmpfile.write(line + "\n")
 
 	if hits > 0:
-		os.remove(Excludes)
-		SwapFile(tmp,Excludes)
+		os.remove(exclude_file)
+		SwapFile(tmp,exclude_file)
 		success = True
 	else:
 		os.remove(tmp)
@@ -786,7 +1230,108 @@ def RemoveExclude(item):
 	return success
 
 #
-# Diags, tests and reformatters
+# Interactive Functions
+#
+
+# Direct Edit EDL List
+def DirectEditEDL(masterfile=None,edlfile=None,save=False):
+	"""
+	Direct edit the EDL
+	Only active in CmdLineMode
+	"""
+	global EDLMaster, AutoSave
+
+	if masterfile == None: masterfile = EDLMaster
+	if edlfile == None: edlfile = EDLFile
+
+	if ModuleMode(): return
+
+	reply = input("====> WARNING : Direct Editting is discouraged continue (y/N)? ")
+
+	if reply == "y":
+		BackUp(masterfile)
+
+		# Execute nano with the edl master
+		subprocess.call(["nano",masterfile])
+		Audit("EDL Master was editted manually")
+
+		if save or AutoSave: Save(edlfile,masterfile)
+
+# Get Comment
+def GetComment():
+	"""Get the currently cached comments"""
+
+	global Responses
+
+	if ModuleMode(): return
+
+	comment = None
+
+	if len(Responses) > 0:
+		Msg("q|quit To Quit\nEnter any string for new comment\nOr select provided comment(s)\n=============")
+
+		eo = { "q":"Quit", }
+		reply = Menu(Responses,extra_options=eo,no_match=True)
+
+		if reply and not reply == "q":
+			if reply == "":
+				reply = "No comment"
+
+			if not reply in Responses:
+				AddResponse(reply)
+
+			comment = reply
+	else:
+		comment = input("Enter comment : ")
+
+		if comment == "":
+			comment = "No Comment"
+
+		AddResponse(comment)
+
+	return comment
+
+# Edit One Entry
+def EditEntry(ip,masterfile=None,edlfile=None):
+	"""
+	Edit a single entry of the EDL (based on the IP).
+	Only active in CmdLineMode
+	"""
+
+	global EDLMaster, EDLFile
+
+	if masterfile == None: masterfile = EDLMaster
+	if edlfile == None: edlfile = EDLFILE
+
+	entry = FindEntry(ip,masterfile)
+
+	if entry and CmdLineMode():
+		DbgMsg(entry)
+
+		TMP = TmpFilename()
+
+		ip = entry["ip"]
+		old_line = ",".join(list(entry.values())[1:])
+
+		with open(TMP,"wt") as tmpfile:
+			print(old_line,file=tmpfile)
+
+		subprocess.call([ "nano", TMP ])
+
+		new_line = ""
+
+		with open(TMP,"rt") as tmpfile:
+			new_line = tmpfile.read().strip()
+
+		if old_line != new_line:
+			fields = new_line.split(",")
+			fields.insert(0,ip)
+
+			Replace(fields,masterfile,edlfile)
+			Audit("{} entry was manually editted - was '{}'".format(ip,old_line))
+
+#
+# Parser functions, Diags and tests
 #
 
 # Prep for Debug Mode Ops
@@ -809,138 +1354,118 @@ def PrepDebug():
 
 	print("Working EDL is now {}".format(EDLFile))
 
-# Reformat EDL File
-def ReformatEDL():
-	"""
-	Seldom ued function for reformatting the EDL if another column is added
-	"""
-	global EDLFile, Columns
+# Build Parser
+def BuildParser():
+	"""Build Parser"""
 
-	current = [ "ip", "user", "timestamp", "comment" ]
+	global __Parser__
 
-	TMP = TmpFilename()
+	if __Parser__ == None:
+		# Config Argument Parser
+		__Parser__ = argparse.ArgumentParser(description="EDL Manager")
 
-	BackUp(EDLFile)
+		__Parser__.add_argument("--debug",action="store_true",help="Place app in debug mode")
+		__Parser__.add_argument("--noipv6",action="store_true",help="IPv6 addresses are not accepted")
+		__Parser__.add_argument("--master",help="Set Master file")
+		__Parser__.add_argument("--edl",help="Set EDL Data file")
+		__Parser__.add_argument("--exclude",help="Set Exclude file")
+		__Parser__.add_argument("--age",help="Set maximum age in days for cull operations")
+		__Parser__.add_argument("-p","--prompt",action="store_true",help="Set prompt before actions committed")
+		__Parser__.add_argument("--autosave",action="store_true",help="Set Autosave mode for EDLFile")
 
-	Audit("Attempting to reformat EDL")
+		# Create Sub parsers
+		subparsers = __Parser__.add_subparsers(help="Operations on EDL",dest="operation")
 
-	try:
-		with open(EDLFile,newline='') as csvfile:
-			reader = csv.DictReader(csvfile,current)
+		# One offs
 
-			DbgMsg("Source CSV Open")
+		# Shell Mode (Completely Interactive Feature)
+		shell_parser = subparsers.add_parser("shell",help="Enter shell mode")
 
-			with open(TMP,"w",newline='') as tmpfile:
-				writer = csv.writer(tmpfile)
+		# Test Mode
+		test_parser = subparsers.add_parser("test",help="Enter Test Code")
 
-				DbgMsg("Dest CSV Open, beginning reformatting")
+		# Save Command
+		save_parser = subparsers.add_parser("save",help="Save master file contents to EDL File")
+		save_parser.add_argument("edl",nargs="?",default=None,help="Optional EDL file path")
+		save_parser.add_argument("master",nargs="?",default=None,help="Optional masterfile, EDL file must be supplied first")
 
-				for row in reader:
-					DbgMsg("Processing old row")
+		# Edit Master File (Completely Interactive Feature)
+		edit_master_parser = subparsers.add_parser("edit",help="Edit Masterfile")
+		edit_master_parser.add_argument("-s","--save",action="store_true",help="Once master edit completes, save EDL")
+		edit_master_parser.add_argument("-f","--file",help="If saving consumable EDL, optionally specify file (default if not)")
 
-					ip = row["ip"]
-					user = row["user"]
-					timestamp = row["timestamp"]
-					comment = row["comment"]
+		# Backup command (Non-Interactive)
+		backup_parser = subparsers.add_parser("backup",help="Backup data files")
 
-					DbgMsg("Trying whois for {}".format(ip))
-					reply = whois.GetIPInfo(ip)
+		# Restore command (Non-Interactive)
+		restore_parser = subparsers.add_parser("restore",help="restore data files")
 
-					DbgMsg("Response {}".format(reply[0]))
+		# Cull (Non-Interactive Feature)
+		cull_parser = subparsers.add_parser("cull",aliases=["expire"],help="Cull Master/EDL file of older records")
+		cull_parser.add_argument("days",nargs="?",default=None,help="Maximum age of entry in days")
 
-					if reply and reply[0] == 200:
-						owner = reply[1]
-						abuse = reply[7]
-					else:
-						owner = "unknown"
-						abuse = ""
+		# Dump Master File (Completely Interactive)
+		dump_parser = subparsers.add_parser("dump",aliases=["get","getmaster","getm"],help="Dump Master file")
 
-					DbgMsg("Forming new row")
-					newrow = [ ip,user,timestamp,owner,abuse,comment ]
+		# More complex sub commands
 
-					DbgMsg("Writing - {}".format(newrow))
+		# Add Functionality (Partially Interactive Feature)
+		add_parser = subparsers.add_parser("add",help="Add an entry to EDL")
+		add_parser.add_argument("host",help="Host to block (by default, IPv4 or hostname")
+		add_parser.add_argument("comment",help="Comment for EDL Entry")
 
-					writer.writerow(newrow)
+		# Bulk Add (Partially Interactive Feature)
+		bulkadd_parser = subparsers.add_parser("bulkadd",aliases=['ba',"bulk"],help="Bulk Add")
+		bulkadd_parser.add_argument("file",help="File to import for bulk add")
+		bulkadd_parser.add_argument("comment",nargs="?",help="Bulk comment (optional)")
 
-					DbgMsg("Sleeping.....")
-					time.sleep(4)
+		# Remove (Partially Interactive)
+		remove_parser = subparsers.add_parser("remove",aliases=["rm","del","delete"],help="Remove specified EDL Entry")
+		remove_parser.add_argument("host",help="Host to remove (IP or DNS name)")
 
-		SwapFile(TMP,EDLFile)
-	except Exception as err:
-		Msg("Shit!!!!!!!!!!!!!!\n{}".format(repr(err)))
-	finally:
-		if os.path.exists(TMP):
-			os.remove(TMP)
+		# Bulk Remove (Partially Interactive)
+		bulkremove_parser = subparsers.add_parser("bulkremove",aliases=["bulkrm","bulkdel","bulkdelete"],help="Bulk Remove")
+		bulkremove_parser.add_argument("file",help="File to import for bulk remove")
 
-#
-# Test Stub
-#
+		# Search (Partially Interactive)
+		search_parser = subparsers.add_parser("search",help="Search Master file")
+		search_parser.add_argument("by_type",choices=["ip","cidr","dns","user","owner","abuse","timestamp"],default="ip",help="Search by given type")
+		search_parser.add_argument("search_str",help="Thing to search for")
 
-# Run Test
-def test():
-	"""Test stub"""
-	PrepDebug()
-	# ReformatEDL()
+		# Exclude (Non-Interactive)
+		exclude_parser = subparsers.add_parser("exclude",aliases=["ex"],help="Exclude Host or CIDR Range")
+		exclude_parser.add_argument("host",help="Host or CIDR Range to add to excludes")
+		exclude_parser.add_argument("comment",nargs="?",help="Comment for entry")
 
-	# print("I do nothing ATM")
+		# Remove Exclusion (Partially Interactive)
+		rmexclude_parser = subparsers.add_parser("removeexclude",aliases=["rmex","removeex","rmx","removex"],help="Remove exclusion")
+		rmexclude_parser.add_argument("hosts",help="Host or CIDR to remove from excludes")
 
-#
-# Main Loop
-#
+		# View/Dump Exclude List (Partially Interactive)
+		viewexclude_parser = subparsers.add_parser("viewexcludes",aliases=["vex","viewx","dumpex","getex"],help="View/Dump/Return excludes list")
 
-if __name__ == "__main__":
-	"""Main loop for using the EDL as a cmd line script"""
+		# Check Exclude for item
+		checkex_parser = subparsers.add_parser("checkexcludes",aliases=["chex","checkex"],help="Check excludes for item")
+		checkex_parser.add_argument("exclude",help="Exclude to check for")
 
-	# What is this CmdLineMode/ModuleMode bidness?
-	# In short I write my modules to be both callable as scripts
-	# And modules from other Python Scripts.
-	# Having same that, the module needs to know when to act
-	# like it's being called from the command line or another
-	# python script.
-	# ModuleMode(False) and CmdLineMode(True) are equivalent
-	# as is ModuleMode(True) and CmdLineMode(False), they
-	# are actually, internally, the same flag. Just the inverse of
-	# each other.
+		# Edit IP (Completely Interactive)
+		editip_parser = subparsers.add_parser("edithost",aliases=["editip"],help="Edit single host record in master")
+		editip_parser.add_argument("host",help="Host entry to edit")
 
-	CmdLineMode(True)	# Place instance in cmdline mode
+	return __Parser__
 
-	# Make sure EDL Exists, if not, provision a new one
-	if not os.path.isfile(EDLFile):
-		Touch(EDLFile)
+# Parse Arguments
+def ParseArgs(arguments=None):
+	"""Parse Arguments"""
 
-	# Check for preset comment in ENV, preset if there
-	comment = os.environ.get("COMMENT")
+	global __Parser__, MaxAge, Confirm, EDLMaster, EDLFile, Excludes, AutoSave, NoIPv6
 
-	if comment:
-		AddResponse(comment)
+	args = None
 
-	# Config Argument Parser
-	parser = argparse.ArgumentParser(description="EDL Manager")
-
-	parser.add_argument("-x","--debug",action="store_true",help="Place app in debug mode")
-	parser.add_argument("-e","--edit",action="store_true",help="Directly edit EDL file")
-	parser.add_argument("-a","--add",help="Add given IP to EDL list")
-	parser.add_argument("-b","--bulkadd",help="Bulk Add IP's in given file to EDL list")
-	parser.add_argument("-y","--roll",action="store_true",help="Rolling Add")
-	parser.add_argument("-r","--remove",help="Remove given IP from EDL list")
-	parser.add_argument("-m","--bulkrem",help="Bulk remove IP's in given file from EDL")
-	parser.add_argument("-t",help="Set cull interval in days (90 days default)")
-	parser.add_argument("-z","--cull",action="store_true",help="Cull EDL items older then set interval")
-	parser.add_argument("-s","--search",help="Search EDL for given IP")
-	parser.add_argument("-c","--comment",help="Preset Comment provided")
-	parser.add_argument("-d","--dump",action="store_true",help="Dump EDL file")
-	parser.add_argument("-p","--prompt",action="store_true",help="Set prompt before actions committed")
-	parser.add_argument("-q","--test",action="store_true",help="Run internal test function")
-	parser.add_argument("--ex",help="Add excluded IP or CIDR range (can use -c for comments)")
-	parser.add_argument("--rmex",help="Remove exclusion from exclude list")
-	parser.add_argument("--vex",action="store_true",help="View/dump exclude list")
-	parser.add_argument("--chex",help="Check exclude list for item")
-	parser.add_argument("--backup",action="store_true",help="Backup EDL file")
-	parser.add_argument("--restore",action="store_true",help="Restore simple backup if it exists")
-	parser.add_argument("--editip",help="Edit one IP Entry")
-
-	# Parse 'dem args my brother
-	args = parser.parse_args()
+	if arguments == None:
+		args,unknowns = __Parser__.parse_known_args()
+	else:
+		args,unknowns = __Parser__.parse_known_args(arguments)
 
 	#
 	# Set State Items that need to come first
@@ -950,76 +1475,215 @@ if __name__ == "__main__":
 	if args.debug:
 		PrepDebug()
 
-	# Backup EDL File if Asked
-	if args.backup:
-		BackUp(EDLFile)
+	if args.noipv6:
+		NoIPv6 = True
 
-	# Restore EDL Backup, if it exists
-	if args.restore:
-		Restore(EDLFile)
+	# Check for Master File Change
+	if args.master:
+		EDLMaster = args.master
+
+	# Check for EDL File Change
+	if args.edl:
+		EDLFile = args.edl
+
+	# Check for Exclude Change
+	if args.exclude:
+		Excludes = args.exclude
 
 	# Set Interval
-	if args.t and args.t.isdigit():
-		INTERVAL = timedelta(days=int(args.t))
-	elif args.t:
+	if args.age and args.age.isdigit():
+		MaxAge = timedelta(days=int(args.age))
+	elif args.age:
 		Msg("Interval must be in days and numeric")
-
-	# Preset Comment
-	if args.comment:
-		AddResponse(args.comment)
 
 	# Prompt state
 	if args.prompt:
 		Confirm=True
 
+	# Check Autosave
+	if args.autosave:
+		AutoSave = True
+
+	return args, unknowns
+
+# Plugin Run Pattern Handler
+def run(**kwargs):
+	"""Plugin Pattern Handler"""
+
+	global EDLMaster, EDLFile, __Parser__
+
+	# Check Kwargs
+
+	arguments = kwargs.get("arguments",None)
+	args = kwargs.get("args",None)
+
+	# Make sure EDL Exists, if not, provision a new one
+	if not os.path.isfile(EDLFile):
+		Touch(EDLFile)
+
+	if args == None:
+		# Parse 'dem args my brother
+		if arguments != None:
+			args,unknowns = ParseArgs(arguments)
+		else:
+			args,unknowns = ParseArgs()
+
 	#
 	# Now Check for actions
 	#
 
-	if args.edit:
-		DirectEditEDL()
-	elif args.editip:
-		EditEntry(args.editip)
-	elif args.add:
-		Msg("Fast repeated adds may get rate limited by WHOIS")
-		invalidFlag, existingFlag, entry = Add(args.add)
-		if existingFlag:
-			reply = input("Show (y/n)? ")
-			if reply == "y":
-				Msg(entry)
-	elif args.bulkadd:
-		Msg("Bulk adds have a builtin pause to prevent WHOIS from rate limiting this functionality")
-		if len(responses) > 0:
-			comment = responses[0]
+	results = None
+	success = True
 
-		success,adds = BulkAdd(args.bulkadd,comment=comment)
-	elif args.roll:
-		RollingAdd()
-	elif args.remove:
-		Remove(args.remove)
-	elif args.bulkrem:
-		BulkRemove(args.bulkrem)
-	elif args.cull:
-		Cull()
-	elif args.search:
-		Search(args.search)
-	elif args.dump:
-		Dump(EDLFile)
-	elif args.ex:
-		AddExclude(args.ex,args.comment)
-	elif args.rmex:
-		RemoveExclude(args.rmex)
-	elif args.vex:
+	op = args.operation
+
+	if op == "test":
+		results = test()
+	elif op == "shell" and CmdLineMode():
+		shell = EDLShell()
+		shell.SetParser(__Parser__)
+		shell.cmdloop()
+	elif op == "save":
+		edlfile = args.edl
+		masterfile = args.master
+
+		Save(edlfile,masterfile)
+	elif op == "edit" and CmdLineMode():
+		filename = args.get("file",None)
+		mode = "w" if args.append == None else "a"
+		autosave=args.get("save",False)
+
+		DirectEditEDL(filename=filename,save=autosave)
+	elif op in [ "cull", "expire" ]:
+		results = Cull(args.days)
+	elif op == "backup":
+		Backup(EDLMaster)
+		Backup(EDLFile)
+	elif op == "restore":
+		Restore(EDLMaster)
+		Restore(EDLFile)
+	elif op in [ "dump", "get", "getmaster", "getm" ]:
+		Dump(EDLMaster)
+	elif op in [ "edithost", "editip" ]:
+		host = args.host
+		EditEntry(host)
+	elif op == "add":
+		Msg("Fast repeated adds may get rate limited by WHOIS")
+
+		host = args.host
+		comment = args.comment
+
+		results = Add(host,comment=comment)
+
+		for result in results:
+			invalid,existing,entry,excluded,edl_entry = result
+
+			if invalid:
+				Msg(f"Invalid entry - {entry}")
+			if existing:
+				Msg(f"{entry[0]} exists in EDL")
+
+				reply = input("Exists, Show (y/n)? ")
+
+				if reply == "y":
+					Msg(entry)
+
+			if excluded:
+				Msg(f"{entry[0]} is an excluded address, it was not added to the EDL")
+
+		success = True
+	elif op in [ "bulkadd","ba","bulk" ]:
+		Msg("Bulk adds have a builtin pause to prevent WHOIS from rate limiting this functionality")
+
+		file = args.file
+		comment = args.comment
+
+		if len(Responses) > 0 and comment == None:
+			comment = Responses[0]
+		elif comment == None:
+			comment = "No comment provided"
+		else:
+			AddResponse(comment)
+
+		success,results = BulkAdd(file,comment=comment)
+	elif op in [ "remove", "rm", "del", "delete" ]:
+		Remove(args.host)
+	elif op in [ "bulkremove", "bulkrm", "bulkdel", "bulkdelete" ]:
+		BulkRemove(args.file)
+	elif op == "search":
+		results = Search(args.search_str,by_type=args.by_type)
+
+		for result in results:
+			Msg(result)
+	elif op in [ "exclude", "ex" ]:
+		AddExclude(args.host,args.comment)
+	elif op in [ "removeexclude", "rmex", "removeex", "rmx", "removex" ]:
+		RemoveExclude(args.hosts)
+	elif op in [ "viewexcludes", "vex", "viewx", "dumpex","getex" ]:
 		Dump(Excludes)
-	elif args.chex:
-		if SearchExclude(args.chex):
+	elif op in [ "checkexcludes", "chex", "checkex", "checkx" ]:
+		if SearchExclude(args.exclude):
 			Msg("Is in exclude list")
 		else:
 			Msg("Not in exclude list")
 
-	if args.test:
-		TestFunction()
+	return results
 
-#if DebugMode: Pause()
-#if DebugMode: Dump()
+#
+# Initialization
+#
 
+# Initialize Module
+def Initialize():
+	"""Initialize Module"""
+
+	global __EnvEDLMaster__,__EnvEDLFile__,__EnvEDLExcludes__,__EnvComment__
+	global EDLFile, EDLMaster, Excludes
+
+	random.seed()
+
+	# Check Environment
+	EDLMaster = os.environ.get(__EnvEDLMaster__,EDLMaster)
+	EDLFile = os.environ.get(__EnvEDLFile__,EDLFile)
+	Excludes = os.environ.get(__EnvEDLExcludes__,Excludes)
+
+	# Check for preset comment in ENV, preset if there
+	comment = os.environ.get(__EnvComment__,None)
+
+	if comment:
+		AddResponse(comment)
+
+	BuildParser()
+
+
+# Init Instance
+Initialize()
+
+#
+# Test Stub
+#
+
+# Run Test
+def test():
+	"""Test stub"""
+	PrepDebug()
+
+	
+
+#
+# Main Loop
+#
+
+if __name__ == "__main__":
+	"""Main loop for using the EDL as a cmd line script"""
+
+	CmdLineMode(True)	# Place instance in cmdline mode
+
+	run()
+
+
+#
+# Notes
+#
+
+# Left off on Add, not complete. Have to check "host/ip" and attempt resolution if not IP
