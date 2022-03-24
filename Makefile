@@ -4,9 +4,12 @@ CODE=edl.py
 SRC=src/edl/$(CODE)
 PYTHONTARGET=python3.8
 CHEATTARGET=/usr/lib/$(PYTHONTARGET)
+BINHOME=/usr/local/bin
+BINNAME=edl
 VENV=tests
 PLATFORM=linux
 RECFILE=requirements.txt
+VERSION=
 
 .prereqs:
 	@python3 -m pip install --upgrade pip
@@ -66,7 +69,11 @@ endif
 
 install:
 ifeq ($(PLATFORM),linux)
+ifdef version
+	$(PYTHONTARGET) -m pip install $(PACKAGE)==$(version)
+else
 	$(PYTHONTARGET) -m pip install $(PACKAGE)
+endif
 else
 	py -m pip install $(PACKAGE)
 endif
@@ -91,6 +98,10 @@ ifeq ($(PLATFORM),linux)
 else
 	py -m pip install --upgrade $(PACKAGE)
 endif
+
+installtool:
+	@sudo cp $(CODE) $(BINHOME)/$(BINNAME)
+	@sudo chmod +x $(BINHOME)/$(BINNAME)
 
 actions:
 	@printf "prereqs\t\tInstall prereqs\n"

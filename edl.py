@@ -556,13 +556,11 @@ Responses = list()
 # Test File
 DMEDLFile="/tmp/edl.test.txt"
 # EDL Master File
-EDLMaster = "/tmp/edlmaster.txt"
+EDLMaster = "/tmp/edlmaster.csv"
 # EDL File
-#EDLFile="/tmp/edl.txt"
-EDLFile="/srv/storage/data/edl.txt"
+EDLFile="/tmp/edl.txt"
 # Exclude File
-#Excludes="/tmp/edl.excludes"
-Excludes="/srv/storage/data/edl-excl.txt"
+Excludes="/tmp/edl-excl.txt"
 # Audit Trail File
 AuditFile=None
 
