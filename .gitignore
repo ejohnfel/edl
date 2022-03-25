@@ -132,3 +132,4 @@ dmypy.json
 *.bak
 .prereqs
 verfix.py
+edl-excl.txt

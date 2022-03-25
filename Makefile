@@ -119,4 +119,5 @@ actions:
 	@printf "actions\t\tThis list\n"
 	@printf "cheatinstall\tDo the cp /usr/lib thing\n"
 	@printf "cheatrm\tClean up code from cheatinstall\n"
+	@printf "installtool\tInstall edl.py as a cmd line tool in $(BINHOME)"
 	@printf "clean\t\tClean build dist\n"

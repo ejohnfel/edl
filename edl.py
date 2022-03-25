@@ -212,19 +212,19 @@ class EDLShell(cmd.Cmd):
 			self.__create_parser__ = parser = argparse.ArgumentParser(description="File creation sub command")
 			subparser = parser.add_subparsers(help="File creation operations",dest="operation")
 
-			all_parser = subparser.add_parser("all",help="Create all support files")
-			all_parser.add_argument("master",help="Masterfile file path")
-			all_parser.add_argument("edl",help="EDL file path")
-			all_parser.add_argument("excludes",help="Excludes file path")
+			all_parser = subparser.add_parser("all",help="Create all files")
+			all_parser.add_argument("masterfile",nargs="?",help="New Master file")
+			all_parser.add_argument("edlfile",nargs="?",help="New edl file")
+			all_parser.add_argument("excludes",nargs="?",help="New exclude file")
 
 			master_parser = subparser.add_parser("master",help="Create master file")
-			master_parser.add_argument("master",help="Path to masterfile")
+			master_parser.add_argument("masterfile",nargs="?",help="Path to masterfile")
 
 			edl_parser = subparser.add_parser("edl",help="Create edl file")
-			edl_parser.add_argument("edl",help="Path to EDL file")
+			edl_parser.add_argument("edl",nargs="?",help="Path to EDL file")
 
 			ex_parser = subparser.add_parser("excludes",help="Create excludes file")
-			ex_parser.add_argument("excludes",help="Path to excludes file")
+			ex_parser.add_argument("excludes",nargs="?",help="Path to excludes file")
 
 		if self.__save_parser__ == None:
 			self.__save_parser__ = parser = argparse.ArgumentParser(description="Save EDL sub command")
@@ -245,36 +245,54 @@ class EDLShell(cmd.Cmd):
 
 		if self.__create_parser__ == None: self.InitParsers()
 
-		arguments = arguments.split(" ")
+		arguments = ph.ParseDelimitedString(arguments)
 
-		args,unknowns = self.__create_parser__.parse_known_args(arguments)
+		try:
+			args,unknowns = self.__create_parser__.parse_known_args(arguments)
 
-		if args.operation == "all":
-			DbgMsg("Creating ALL - {args.master}, {args.edl}, {args.excludes}")
+			if args.operation == "all":
+				DbgMsg("Creating ALL - {args.master}, {args.edl}, {args.excludes}")
 
-			CreateMaster(args.master)
-			EDLMaster = args.master
-			ph.Touch(args.edl)
-			EDLFile = args.edl
-			ph.Touch(args.exludes)
-			Excludes = args.excludes
-		elif args.operation == "master":
-			DbgMsg(f"Creating Master {args.master}")
+				if args.masterfile != None:
+					EDLMaster = args.masterfile
 
-			CreateMaster(args.master)
-			EDLMaster = args.master
-		elif args.operation == "edl":
-			DbgMsg(f"Creating edl {args.edl}")
+				CreateMaster()
 
-			ph.Touch(args.edl)
-			EDFile = args.edl
-		elif args.operation == "excludes":
-			DbgMsg(f"Creating Excludes - {args.excludes}")
+				if args.edlfile != None:
+					EDLFile = args.edlfile
 
-			ph.Touch(args.excludes)
-			Excludes = args.excludes
-		else:
-			Msg("No operation, all, master, edl, excludes provided, can't do anything")
+				ph.Touch(EDLFile)
+
+				if args.excludes != None:
+					Excludes = args.excludes
+
+				ph.Touch(Excludes)
+			elif args.operation == "master":
+				DbgMsg(f"Creating Master {args.master}")
+
+				if args.masterfile != None:
+					EDLMaster = args.masterfile
+
+				CreateMaster()
+			elif args.operation == "edl":
+				DbgMsg(f"Creating edl {args.edl}")
+
+				if args.edlfile != None:
+					EDLFile = args.edlfile
+
+				ph.Touch(EDLFile)
+			elif args.operation == "excludes":
+				DbgMsg(f"Creating Excludes - {args.excludes}")
+
+				if args.excludes != None:
+					Excludes = args.excludes
+
+				ph.Touch(Excludes)
+			else:
+				Msg("No operation, all, master, edl, excludes provided, can't do anything")
+
+		except SytemExit:
+			pass
 
 	# Get or Set Debugmode
 	def do_debugmode(self,arguments):
@@ -385,12 +403,15 @@ class EDLShell(cmd.Cmd):
 
 		arguments = arguments.split(" ")
 
-		args,unknowns = self.__save__parser__.parse_known_args(arguments)
+		try:
+			args,unknowns = self.__save__parser__.parse_known_args(arguments)
 
-		edlfile = EDLFIle if args.edl == None else args.edl
-		masterfile = EDLMaster if args.master == None else args.master
+			edlfile = EDLFIle if args.edl == None else args.edl
+			masterfile = EDLMaster if args.master == None else args.master
 
-		Save(edlfile,masterfile)
+			Save(edlfile,masterfile)
+		except SystemExit:
+			pass
 
 	# Add To EDL
 	def do_add(self,arguments):
@@ -406,21 +427,34 @@ class EDLShell(cmd.Cmd):
 
 		params.extend(args)
 
-		args, unknowns = self.__parser__.parse_known_args(params)
+		try:
+			args, unknowns = self.__parser__.parse_known_args(params)
 
-		comment = args.comment
+			comment = args.comment
 
-		if CmdLineMode() and comment in [ None, "" ]:
-			comment = GetComment()
-		elif len(Responses) > 0:
-			comment = Responses[0]
-		else:
-			comment = "No comment provided"
+			if CmdLineMode() and comment in [ None, "" ]:
+				comment = GetComment()
+			elif len(Responses) > 0:
+				comment = Responses[0]
+			else:
+				comment = "No comment provided"
 
-		entries = Add(args.host,comment=args.comment)
+			entries = Add(args.host,comment=args.comment)
 
-		for entry in entries:
-			Msg(f"Added {entry}")
+			for entry in entries:
+				Msg(f"Added {entry}")
+		except SystemExit:
+			pass
+
+	# Bulk Add
+	def do_bulkadd(self,args):
+		"""Bulk Add"""
+
+		filename,comment = args.split(" ",1)
+
+		if comment == "": comment = None
+
+		BulkAdd(filename,comment=comment)
 
 	# Remove From EDL
 	def do_remove(self,arguments):
@@ -442,6 +476,12 @@ class EDLShell(cmd.Cmd):
 
 		self.do_remove(arguments)
 
+	# Bulk Remove
+	def do_bulkrm(self,args):
+		"""Bulk Remove"""
+
+		BulkRemove(args)
+
 	# Search From EDL
 	def do_search(self,arguments):
 		"""Search EDL"""
@@ -450,16 +490,35 @@ class EDLShell(cmd.Cmd):
 
 		params.append("search")
 
-		args = ph.ParseDelimitedString(arguments)
+		targs = ph.ParseDelimitedString(arguments)
 
-		params.extend(args)
+		params.extend(targs)
 
-		args = ParseArgs(arguments=params)
+		try:
+			args,unknowns = ParseArgs(arguments=params)
 
-		results = Search(args.search_str,by_type=args.by_type)
+			results = Search(args.search_str,by_type=args.by_type)
 
-		for result in results:
-			Msg(result)
+			for result in results:
+				Msg(result)
+		except SystemExit:
+			pass
+
+	# Cull
+	def do_cull(self,args):
+		"""Cull Entries from File"""
+
+		if args == "simulate":
+			items = Cull(simulate=True)
+		else:
+			items = Cull()
+
+		buffer = ""
+
+		for item in items:
+			buffer += f"{item}\n"
+
+		ph.Page(buffer)
 
 	# Dump File
 	def do_dump(self,arguments):
@@ -469,24 +528,27 @@ class EDLShell(cmd.Cmd):
 
 		if self.__dump_parser__ == None: self.InitParsers()
 
-		args,unknowns = self.__dump_parser__.parse_known_args(arguments.split(" "))
+		try:
+			args,unknowns = self.__dump_parser__.parse_known_args(arguments.split(" "))
 
-		file = None
+			file = None
 
-		if args.file == "master":
-			file = EDLMaster
-		elif args.file == "edl":
-			file = EDLFile
-		elif args.file == "excludes":
-			file = Excludes
-		else:
-			Msg(f"Don't know what '{args.file}' is")
-
-		if file:
-			if os.path.exists(file):
-				ph.Page(file)
+			if args.file == "master":
+				file = EDLMaster
+			elif args.file == "edl":
+				file = EDLFile
+			elif args.file == "excludes":
+				file = Excludes
 			else:
-				Msg(f"File, {file} does not presently exist")
+				Msg(f"Don't know what '{args.file}' is")
+
+			if file:
+				if os.path.exists(file):
+					ph.Page(file)
+				else:
+					Msg(f"File, {file} does not presently exist")
+		except SystemExit:
+			pass
 
 	# Show Data Information
 	def do_info(self,args):
@@ -544,7 +606,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,7)
+VERSION=(0,0,8)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -947,24 +1009,35 @@ def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,ma
 	Bulk add file of IP address to EDL. The file should be on IP per line.
 	"""
 
+	global AutoSave
+
 	success = True
 
-	adds = []
+	adds = list()
 
-	if os.path.exists(fname):
-		with open(fname,"rt") as ip_list:
-			for line in ip_list:
-				invalidFlag, existingFlag, entry, excluded, edl_entry = Add(line.strip(),user,timestamp,owner,abuse,comment,nosleep=True,masterfile=masterfile,edlfile=edlfile)
+	# Because of the way this is built, disable autosave temporarily to prevent excessive i/o
+	tmp = AutoSave
+	AutoSave = False
 
-				if existingFlag or invalidFlag: # If exists or is invalid, skip the sleep interval
-					continue
-				else:
-					adds.append(entry)
+	try:
+		if os.path.exists(fname):
+			with open(fname,"rt") as ip_list:
+				for line in ip_list:
+					invalidFlag, existingFlag, entry, excluded, edl_entry = Add(line.strip(),user,timestamp,owner,abuse,comment,nosleep=True,masterfile=masterfile,edlfile=edlfile)
 
-				# Must sleep to avoid WHOIS from Rate Limiting us
-				time.sleep(4)
-	else:
-		success = False
+					if existingFlag or invalidFlag: # If exists or is invalid, skip the sleep interval
+						continue
+					else:
+						adds.append(entry)
+
+					# Must sleep to avoid WHOIS from Rate Limiting us
+					time.sleep(4)
+		else:
+			success = False
+	finally:
+		AutoSave = tmp
+
+	if len(adds) > 0 and AutoSave: Save(edlfile,masterfile)
 
 	return success, adds
 
@@ -1028,16 +1101,18 @@ def BulkRemove(fname,masterfile=None,edlfile=None):
 	"""
 	Given a file with one IP per line, remove the given IPs from the EDL if they are in there
 	"""
+	global AutoSave
+
 	success = True
+
+	removes = list()
 
 	if os.path.exists(fname):
 		with open(fname,"rt") as ip_list:
-			items = []
-
 			for ip in ip_list:
-				items.append(ip.strip())
+				removes.append(ip.strip())
 
-			Remove(items,masterfile,edlfile)
+		Remove(removes,masterfile,edlfile)
 	else:
 		success = False
 
@@ -1048,6 +1123,7 @@ def Replace(fields,masterfile=None,edlfile=None):
 	"""
 	Replace an EDL line (defined by the blocked IP), with the new supplied one.
 	"""
+
 	Remove(fields[0])
 
 	DbgMsg(fields)
@@ -1055,12 +1131,12 @@ def Replace(fields,masterfile=None,edlfile=None):
 	Add(fields[0],fields[1],fields[2],fields[3],fields[4],fields[5],masterfile=masterfile,edlfile=edlfile)
 
 # Cull Records
-def Cull(max_age=None,masterfile=None,edlfile=None):
+def Cull(max_age=None,masterfile=None,edlfile=None,simulate=False):
 	"""
 	Using the module level MaxAge, remove entries from the EDL, older then the interval.
 	"""
 
-	global EDLMaster, MaxAge, Columns
+	global EDLMaster, MaxAge, Columns, AutoSave
 
 	if masterfile == None: masterfile = EDLMaster
 
@@ -1128,9 +1204,12 @@ def Cull(max_age=None,masterfile=None,edlfile=None):
 				Audit("{} was culled from edl, inerted on {}".format(row["ip"],row["timestamp"]))
 				matches.append(row["ip"])
 
-	if len(matches) > 0:
+	if len(matches) > 0 and not simulate:
 		DbgMsg(f"Removing old items")
+
 		if not DebugMode(): Remove(matches,masterfile,edlfile)
+
+		# No need to autosave here, Remove will handle it
 
 	DbgMsg(f"{lines} processed, {len(matches)} matched")
 
@@ -1362,6 +1441,7 @@ def BuildParser():
 		# Config Argument Parser
 		__Parser__ = argparse.ArgumentParser(description="EDL Manager")
 
+		__Parser__.add_argument("-v","--version",action="store_true",help="Show version")
 		__Parser__.add_argument("--debug",action="store_true",help="Place app in debug mode")
 		__Parser__.add_argument("--noipv6",action="store_true",help="IPv6 addresses are not accepted")
 		__Parser__.add_argument("--master",help="Set Master file")
@@ -1457,6 +1537,7 @@ def ParseArgs(arguments=None):
 	"""Parse Arguments"""
 
 	global __Parser__, MaxAge, Confirm, EDLMaster, EDLFile, Excludes, AutoSave, NoIPv6
+	global Version
 
 	args = None
 
@@ -1501,6 +1582,9 @@ def ParseArgs(arguments=None):
 	# Check Autosave
 	if args.autosave:
 		AutoSave = True
+
+	if args.version:
+		Msg(f"Version : {Version}")
 
 	return args, unknowns
 
@@ -1666,8 +1750,6 @@ def test():
 	"""Test stub"""
 	PrepDebug()
 
-	
-
 #
 # Main Loop
 #
@@ -1678,10 +1760,3 @@ if __name__ == "__main__":
 	CmdLineMode(True)	# Place instance in cmdline mode
 
 	run()
-
-
-#
-# Notes
-#
-
-# Left off on Add, not complete. Have to check "host/ip" and attempt resolution if not IP
