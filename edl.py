@@ -606,7 +606,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,8)
+VERSION=(0,0,9)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1023,12 +1023,15 @@ def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,ma
 		if os.path.exists(fname):
 			with open(fname,"rt") as ip_list:
 				for line in ip_list:
-					invalidFlag, existingFlag, entry, excluded, edl_entry = Add(line.strip(),user,timestamp,owner,abuse,comment,nosleep=True,masterfile=masterfile,edlfile=edlfile)
+					results = Add(line.strip(),user,timestamp,owner,abuse,comment,nosleep=True,masterfile=masterfile,edlfile=edlfile)
 
-					if existingFlag or invalidFlag: # If exists or is invalid, skip the sleep interval
-						continue
-					else:
-						adds.append(entry)
+					for result in results:
+						invalidFlag, existingFlag, entry,excluded, edl_entry = result
+
+						if existingFlag or invalidFlag: # If exists or is invalid, skip the sleep interval
+							continue
+						else:
+							adds.append(entry)
 
 					# Must sleep to avoid WHOIS from Rate Limiting us
 					time.sleep(4)
