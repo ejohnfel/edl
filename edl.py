@@ -42,6 +42,7 @@ import argparse
 import ipaddress
 import random
 import uuid
+import copy
 import csv
 import getpass
 import subprocess
@@ -75,7 +76,7 @@ __EnvEDLExcludes__ = "EDLEXCLUDE"
 __EnvComment__ = "EDLCOMMENT"
 
 # EDL Columns
-Columns = [ "ip","user","timestamp","owner","abuse","comment" ]
+Columns = [ "ip","user","timestamp","owner","abuse","comment","status" ]
 
 # EDL Dictionary Row Template
 EDLRowTemplate = {
@@ -84,32 +85,51 @@ EDLRowTemplate = {
 	"timestamp" : None,
 	"owner" : None,
 	"abuse" : None,
-	"comment" : None
+	"comment" : None,
+	"status" : None
 }
+
+Timeformat = "%m/%d/%Y %H:%M:%S %p"
 
 # EDL Entry
 class EDLEntry(Taggable):
 	"""
 	Wrapper around an EDL Row line in the EDL file
 	"""
-	entry = {}
-	is_new = True
+	entry = None
 
 	# Init Instance
-	def __init__(self,entry=None,is_new=None):
+	def __init__(self,**kwargs):
 		"""Init instance"""
-		global Columns
+		global EDLRowTemplate, Columns
 
 		super().__init__()
+
+		entry = kwargs.get("entry",None)
+
+		ip = kwargs.get("ip",None)
+		user = kwargs.get("user",None)
+		timestamp = kwargs.get("timestamp",None)
+		owner = kwargs.get("owner",None)
+		abuse = kwargs.get("abuse",None)
+		comment = kwargs.get("comment",None)
+		status = kwargs.get("status",False)
 
 		if entry:
 			if type(entry) == dict:
 				self.entry = entry
 			elif type(entry) == list:
 				self.entry = dict(zip(Columns,entry))
+		elif ip != None:
+			self.entry = copy.deepcopy(EDLRowTemplate)
 
-			if is_new != None:
-				self.is_new = is_new
+			self.entry["ip"] = ip
+			self.entry["user"] = user
+			self.entry["timestamp"] = timestamp
+			self.entry["owner"] = owner
+			self.entry["abuse"] = abuse
+			self.entry["comment"] = comment
+			self.entry["status"] = status
 
 	# Get IP from entry
 	def IP(self,value=None):
@@ -165,22 +185,97 @@ class EDLEntry(Taggable):
 
 		return self.entry["comment"] if self.entry else None
 
-	# Get Row For Appending To EDL File
-	def GetRow(self):
-		"""Get Row Suitable to appending to the EDL File"""
+	# Get or Set Status
+	def Status(self,value=None):
+		"""Return the status from the EDL Line"""
 
-		row = None
+		if value:
+			self.entry["status"] = value
 
-		if self.entry:
-			row = list(self.entry.values())
-
-		return row
+		return self.entry["status"] if self.entry else None
 
 	# Return Internal Dictionary
 	def GetDict(self):
 		"""Return the underlying Dictionary"""
 
 		return self.entry
+
+	#
+	# Object to CSV Row or CSV Row to Object Operations
+	#
+
+	# Get Row For Appending To EDL File
+	def GetRow(self):
+		"""Get Row Suitable to appending to the EDL File"""
+
+		global EDLRowTemplate, Timeformat
+
+		row = None
+
+		if self.entry != None:
+			row = copy.deepcopy(EDLRowTemplate)
+
+			for key,value in self.entry.items():
+				if key == "timestamp":
+					value = value.strftime(Timeformat)
+				elif key == "status":
+					value = "1" if value else "0"
+
+				row[key] = value
+
+		return row
+
+	# Read Row
+	def ReadRow(self,row):
+		"""Read CSV Row Into EDL Entry"""
+
+		global EDLRowTemplate, Timeformat
+
+		self.entry = copy.deepcopy(EDLRowTemplate)
+
+		for key,value in row.items():
+			if key == "timestamp":
+				value = datetime.strptime(value,Timeformat)
+			elif key == "status":
+				value = True if value == "1" else False
+
+			self.entry[key] = value
+
+		return self
+
+	# Write Row
+	def WriteRow(self,writer):
+		"""Write Entry to CSV File"""
+
+		global EDLRowTemplate, Timeformat
+
+		if self.entry != None:
+			row = self.GetRow()
+
+			writer.writerow(row)
+
+		return self
+
+	#
+	# Support Functions
+	#
+
+	# Get Whois Info
+	def GetWhois(self):
+		"""Get Whois Information"""
+
+		if self.entry != None:
+			response = whois.GetIPInfo(self.entry["ip"])
+
+			if response and response[0] == 200:
+				owner = response[1] if len(response) > 1 and response[1] else "unknown"
+				abuse = response[7] if len(response) > 7 and response[7] else ""
+			else:
+				owner = "unknown" if owner == None else owner
+				abuse = "" if abuse == None else abuse
+
+			self.entry["owner"] = owner
+			self.entry["abuse"] = abuse
 
 # EDL Shell
 class EDLShell(cmd.Cmd):
@@ -606,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,9)
+VERSION=(0,0,10)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -698,10 +793,12 @@ def HostIPCheck(host):
 def Timestamp(timestamp=None):
 	"""Create or Convert Timestamp"""
 
+	global Timeformat
+
 	tsc = TimestampConverter()
 
 	reg_ex = "^\d{1,2}/\d{1,2}/\d{4}$\s+ \d{1,2}\:\d{1,2}\:\d{1,2}\s+([aA]|[pP])[mM]$"
-	fmt = r"%m/%d/%Y %H:%M:%S %p"
+	fmt = Timeformat
 
 	tsc.AddTimeFormat(reg_ex,fmt)
 
@@ -749,7 +846,9 @@ def Save(edlfile=None,masterfile=None):
 
 		with open(edlfile,"w") as f_out:
 			for row in reader:
-				ip = row["ip"]
+				entry = EDLEntry().ReadRow(row)
+
+				ip = entry.IP()
 
 				f_out.write(f"{ip}\n")
 
@@ -813,20 +912,21 @@ def FindEntry(ip,masterfile=None):
 	Find a Block Entry in the EDL
 	"""
 
-	global EDLMaster
+	global EDLMaster, Columns
 
 	if masterfile == None: masterfile = EDLMaster
 
 	entry = None
 
 	if ValidIP(ip):
-		with open(masterfile,newline='') as csvfile:
-			reader = csv.DictReader(csvfile,Columns)
+		if os.path.exists(masterfile):
+			with open(masterfile,newline='') as csvfile:
+				reader = csv.DictReader(csvfile)
 
-			for row in reader:
-				if ip == row["ip"]:
-					entry = list(row.values())
-					break
+				for row in reader:
+					if ip == row["ip"]:
+						entry = EDLEntry().ReadRow(row)
+						break
 
 	return entry
 
@@ -846,6 +946,8 @@ def Search(search_str,by_type="ip",exit_early=False,silent=False,masterfile=None
 		reader = csv.DictReader(csvfile,Columns)
 
 		for row in reader:
+			entry = EDLEntry().ReadRow(row)
+
 			if by_type != "timestamp" and search_str == row[by_type]:
 				values = list(row.values())
 				hits.append(values)
@@ -853,12 +955,10 @@ def Search(search_str,by_type="ip",exit_early=False,silent=False,masterfile=None
 				if exit_early: break
 			elif by_type == "timestamp":
 				sts = tsc.ConvertTimestamp(search_str)
-				rts = tsc.ConvertTimestamp(row[by_type])
 
-				if sts != None and rts != None:
-					if sts == rts:
-						values = list(row.values())
-						hits.append(values)
+				if sts != None:
+					if sts == enty.Timestamp():
+						hits.append(entry)
 
 						if exit_early: break
 
@@ -878,22 +978,26 @@ def AppendToEDL(entry,masterfile=None,edlfile=None):
 	success = True
 
 	if type(entry) is EDLEntry:
-		entry = entry.GetDict()
+		pass
 	elif type(entry) is list:
 		entry = dict(zip(Columns,entry))
+
+		entry = EDLEntry(entry=entry)
 	elif type(entry) is dict:
-		pass
+		entry = EDLEntry(entry=entry)
 
-	DbgMsg(str(entry))
-
-	ip = entry["ip"]
+	ip = entry.IP()
 
 	if IsIPv4(ip) or (IsIPv6(ip) and not NoIPv6):
+		if not os.path.exists(masterfile):
+			CreateMaster(masterfile=masterfile)
+
 		with open(masterfile,"a",newline='') as csvfile:
 			writer = csv.DictWriter(csvfile,Columns)
-			writer.writerow(entry)
 
-		if Audit: Audit("Appended {} to edl master".format(entry))
+			entry.WriteRow(writer)
+
+		if Audit: Audit("Appended {} to edl master".format(entry.GetRow()))
 		if AutoSave: Save(edlfile,masterfile)
 	else:
 		DbgMsg(f"Rejected {ip}, NoIPv6 = {NoIPv6}")
@@ -901,16 +1005,44 @@ def AppendToEDL(entry,masterfile=None,edlfile=None):
 
 	return success
 
+# Add EntryEntry
+def AddEDLEntry(entry,masterfile=None,edlfile=None):
+	"""Add Filled In EDLEntry To EDL"""
+
+	existing = False
+	excluded = False
+	success = True
+
+	if entry != None:
+		if not Excluded(entry.IP()):
+			found = FindEntry(entry.IP(),masterfile)
+
+			if found == None:
+				if entry.Owner() == None or entry.Abuse() == None:
+					entry.GetWhois()
+
+				AppendToEDL(entry,masterfile=masterfile,edlfile=edlfile)
+			else:
+				existing = True
+		else:
+			exclude = True
+			success = False
+	else:
+		success = False
+
+	return (success,excluded,existing)
+
 # Add IP (or list of IPs, or DNS Names) To EDL Master
-def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,nosleep=False,masterfile=None,edlfile=None):
+def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect=False,nosleep=False,masterfile=None,edlfile=None):
 	"""Add Host/List of Hosts/DNS names  to EDL Master"""
 
-	global LastAdd, Responses
+	global LastAdd, Responses, EDLRowTemplate
 
 	if user == None:
 		user = getpass.getuser()
 
-	timestamp,dt = Timestamp(timestamp)
+	if type(timestamp) == str:
+		old_timestamp,timestamp = Timestamp(timestamp)
 
 	if comment == None:
 		if len(Responses) > 0:
@@ -947,19 +1079,12 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,nosleep
 		# if comment None, try to get comment
 		# Create EDLEntry, give to AppendToEDL
 
-		entry = {
-			"ip" : host,
-			"user" : user,
-			"timestamp" : timestamp,
-			"owner" : None,
-			"abuse" : None,
-			"comment" : comment
-			}
+		entry = EDLEntry(ip=host,user=user,timestamp=timestamp,owner=owner,abuse=abuse,comment=comment,status=protect)
 
 		result = {
 			"invalid" : False,
 			"exists" : False,
-			"entry" : list(entry.values()),
+			"entry" : None,
 			"excluded" : False,
 			"edl_entry" : None
 			}
@@ -969,29 +1094,17 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,nosleep
 
 			if found == None:
 				if owner == None or abuse == None:
-					response = whois.GetIPInfo(host)
+					entry.GetWhois()
 
-					if response and response[0] == 200:
-						owner = response[1] if len(response) > 1 and response[1] else "unknown"
-						abuse = response[7] if len(response) > 7 and response[7] else ""
-					else:
-						owner = "unknown" if owner == None else owner
-						abuse = "" if abuse == None else abuse
-
-				entry["owner"] = owner
-				entry["abuse"] = abuse
-
-				edl_entry = EDLEntry(entry)
-
-				AppendToEDL(edl_entry,masterfile=masterfile,edlfile=edlfile)
-				result["entry"] = list(entry.values())
-				result["edl_entry"] = edl_entry
+				AppendToEDL(entry,masterfile=masterfile,edlfile=edlfile)
+				result["entry"] = list(entry.GetRow())
+				result["edl_entry"] = entry
 				results.append(tuple(result.values()))
 			else:
 				# Exists
 				result["exists"] = True
-				result["entry"] = list(found)
-				result["edl_entry"] = EDLEntry(found)
+				result["entry"] = found.GetRow()
+				result["edl_entry"] = found
 				results.append(tuple(result.values()))
 		else:
 			# Excluded
@@ -1004,7 +1117,7 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,nosleep
 	return results
 
 # Bulk Add
-def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,masterfile=None,edlfile=None):
+def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect=False,masterfile=None,edlfile=None):
 	"""
 	Bulk add file of IP address to EDL. The file should be on IP per line.
 	"""
@@ -1023,7 +1136,7 @@ def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,ma
 		if os.path.exists(fname):
 			with open(fname,"rt") as ip_list:
 				for line in ip_list:
-					results = Add(line.strip(),user,timestamp,owner,abuse,comment,nosleep=True,masterfile=masterfile,edlfile=edlfile)
+					results = Add(line.strip(),user,timestamp,owner,abuse,comment,protect=protect,nosleep=True,masterfile=masterfile,edlfile=edlfile)
 
 					for result in results:
 						invalidFlag, existingFlag, entry,excluded, edl_entry = result
@@ -1159,13 +1272,7 @@ def Cull(max_age=None,masterfile=None,edlfile=None,simulate=False):
 
 	matches = list()
 
-	expr = "^(?P<month>\d{1,2})/(?P<day>\d{1,2})/(?P<year>\d{1,4})([\s]+(?P<hour>\d{1,2}):(?P<minute>\d{1,2}):(?P<seconds>\d{1,2})\s+(?P<meridian>(am|AM|pm|PM))){0,1}$"
-
-	m = re.compile(expr)
-
 	lines = 0
-
-	ts = None
 
 	with open(masterfile,newline='') as csvfile:
 		reader = csv.DictReader(csvfile,Columns)
@@ -1173,39 +1280,16 @@ def Cull(max_age=None,masterfile=None,edlfile=None,simulate=False):
 		for row in reader:
 			lines += 1
 
-			match = m.match(row['timestamp'])
+			entry = EDLEntry()
+			entry.ReadRow(row)
 
-			if match != None:
-				DbgMsg(f"{row['timestamp']}")
-				month = int(match.group("month"))
-				day = int(match.group("day"))
-				year = int(match.group("month"))
-
-				if match.group("hour") != None:
-					hour = int(match.group("hour"))
-					minute = int(match.group("minute"))
-					seconds = int(match.group("seconds"))
-					meridian = match.group("meridian")
-				else:
-					hour = 8
-					minute = 0
-					seconds = 0
-					meridian = "AM"
-
-				if meridian == "PM":
-					hour += 12
-
-				ts = datetime(year,month,day,hour,minute,seconds)
-			else:
-				DbgMsg(f"hmmm {row['timestamp']}")
+			if entry.Status():
 				continue
 
-			# ts = datetime.strptime("%m/%d/%Y %I:%M:%S %p",row["timestamp"])
-
-			if ts <= too_old:
+			if entry.Timestamp() <= too_old:
 				DbgMsg(f"removing {row['ip']}")
-				Audit("{} was culled from edl, inerted on {}".format(row["ip"],row["timestamp"]))
-				matches.append(row["ip"])
+				Audit(f"{entry.IP()} was culled from edl, inserted on {entry.Timestamp()}")
+				matches.append(entry.IP())
 
 	if len(matches) > 0 and not simulate:
 		DbgMsg(f"Removing old items")
@@ -1492,11 +1576,13 @@ def BuildParser():
 
 		# Add Functionality (Partially Interactive Feature)
 		add_parser = subparsers.add_parser("add",help="Add an entry to EDL")
+		add_parser.add_argument("-p","--protect",action="store_true",help="Set protection for record")
 		add_parser.add_argument("host",help="Host to block (by default, IPv4 or hostname")
 		add_parser.add_argument("comment",help="Comment for EDL Entry")
 
 		# Bulk Add (Partially Interactive Feature)
 		bulkadd_parser = subparsers.add_parser("bulkadd",aliases=['ba',"bulk"],help="Bulk Add")
+		bulkadd_parser.add_argument("-p","--protect",action="store_true",help="Set protection")
 		bulkadd_parser.add_argument("file",help="File to import for bulk add")
 		bulkadd_parser.add_argument("comment",nargs="?",help="Bulk comment (optional)")
 
@@ -1658,7 +1744,7 @@ def run(**kwargs):
 		host = args.host
 		comment = args.comment
 
-		results = Add(host,comment=comment)
+		results = Add(host,comment=comment,protect=args.protect)
 
 		for result in results:
 			invalid,existing,entry,excluded,edl_entry = result
@@ -1690,7 +1776,7 @@ def run(**kwargs):
 		else:
 			AddResponse(comment)
 
-		success,results = BulkAdd(file,comment=comment)
+		success,results = BulkAdd(file,comment=comment,protect=args.protect)
 	elif op in [ "remove", "rm", "del", "delete" ]:
 		Remove(args.host)
 	elif op in [ "bulkremove", "bulkrm", "bulkdel", "bulkdelete" ]:
@@ -1752,6 +1838,8 @@ Initialize()
 def test():
 	"""Test stub"""
 	PrepDebug()
+
+	DbgMsg("Life is THE test... don't fail it.")
 
 #
 # Main Loop
