@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,10)
+VERSION=(0,0,11)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
