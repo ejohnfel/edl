@@ -53,7 +53,7 @@ import cmd
 # Ma Stoof
 
 import py_helper as ph
-from py_helper import Msg,DbgMsg,DebugMode,CmdLineMode,ModuleMode
+from py_helper import Msg,DbgMsg,ErrMsg,DebugMode,CmdLineMode,ModuleMode
 from py_helper import Taggable, AuditTrail, ValidIP, IsIPv4, IsIPv6, IsNetwork
 from py_helper import Clear, NewLine, Pause, Menu
 from py_helper import SwapFile, Dump, BackUp, Restore, Touch, TmpFilename
@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,12)
+VERSION=(0,0,13)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1571,6 +1571,7 @@ def BuildParser():
 
 		# Dump Master File (Completely Interactive)
 		dump_parser = subparsers.add_parser("dump",aliases=["get","getmaster","getm"],help="Dump Master file")
+		dump_parser.add_argument("file_spec",nargs="?",choices=["master","masterfile","edl","edlfile","excludes"],help="Optional file specification")
 
 		# More complex sub commands
 
@@ -1734,7 +1735,20 @@ def run(**kwargs):
 		Restore(EDLMaster)
 		Restore(EDLFile)
 	elif op in [ "dump", "get", "getmaster", "getm" ]:
-		Dump(EDLMaster)
+		try:
+			if args.file_spec != None:
+				if args.file_spec in ["edl","edlfile"]:
+					Dump(EDLFile)
+				elif args.file_spec in ["excludes"]:
+					Dump(Excludes)
+				else:
+					Dump(EDLMaster)
+
+			else:
+				Dump(EDLMaster)
+		except Exception as err:
+			Msg("Could not open requested file")
+
 	elif op in [ "edithost", "editip" ]:
 		host = args.host
 		EditEntry(host)
