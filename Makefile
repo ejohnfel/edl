@@ -70,13 +70,16 @@ endif
 install:
 ifeq ($(PLATFORM),linux)
 ifdef version
-	$(PYTHONTARGET) -m pip install $(PACKAGE)==$(version)
+	$(PYTHONTARGET) -m pip install --no-index $(PACKAGE)==$(version)
 else
 	$(PYTHONTARGET) -m pip install $(PACKAGE)
 endif
 else
 	py -m pip install $(PACKAGE)
 endif
+
+uninstall:
+	$(PYTHONTARGET) -m pip uninstall $(PACKAGE)
 
 installreq: requirements.txt
 ifeq ($(PLATFORM),linux)

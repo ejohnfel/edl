@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,17)
+VERSION=(0,0,18)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1730,10 +1730,8 @@ def run(**kwargs):
 		elif filename == "edl":
 			filename = EDLFile
 
-		autosave=args.get("save",False)
-
 		if filename != None and os.file.exists(filename):
-			DirectEditEDL(filename=filename,save=autosave)
+			DirectEditEDL(filename=filename,save=args.save)
 		else:
 			Msg(f"'{filename}' either doesn't exist, is not readable or is pure pish, fix it")
 	elif op in [ "cull", "expire" ]:
