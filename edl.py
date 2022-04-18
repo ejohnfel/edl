@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,15)
+VERSION=(0,0,16)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1559,7 +1559,6 @@ def BuildParser():
 		# Edit Master File (Completely Interactive Feature)
 		edit_master_parser = subparsers.add_parser("edit",help="Edit Masterfile")
 		edit_master_parser.add_argument("-s","--save",action="store_true",help="Once master edit completes, save EDL")
-		edit_master_parser.add_argument("-e","--edl",help="If saving consumable EDL, optionally specify file (default if not)")
 		edit_master_parser.add_argument("file",nargs="?",help="File to edit, masterfile by default")
 
 		# Backup command (Non-Interactive)
@@ -1724,7 +1723,7 @@ def run(**kwargs):
 
 		Save(edlfile,masterfile)
 	elif op == "edit" and CmdLineMode():
-		filename = args.get("file",None)
+		filename = args.file
 
 		if filename == None or filename in [ "masterfile", "master" ]:
 			filename = EDLMaster
