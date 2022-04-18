@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,16)
+VERSION=(0,0,17)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1730,7 +1730,6 @@ def run(**kwargs):
 		elif filename == "edl":
 			filename = EDLFile
 
-		mode = "w" if args.append == None else "a"
 		autosave=args.get("save",False)
 
 		if filename != None and os.file.exists(filename):
