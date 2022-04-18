@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,14)
+VERSION=(0,0,15)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1559,7 +1559,8 @@ def BuildParser():
 		# Edit Master File (Completely Interactive Feature)
 		edit_master_parser = subparsers.add_parser("edit",help="Edit Masterfile")
 		edit_master_parser.add_argument("-s","--save",action="store_true",help="Once master edit completes, save EDL")
-		edit_master_parser.add_argument("-f","--file",help="If saving consumable EDL, optionally specify file (default if not)")
+		edit_master_parser.add_argument("-e","--edl",help="If saving consumable EDL, optionally specify file (default if not)")
+		edit_master_parser.add_argument("file",nargs="?",help="File to edit, masterfile by default")
 
 		# Backup command (Non-Interactive)
 		backup_parser = subparsers.add_parser("backup",help="Backup data files")
@@ -1724,10 +1725,19 @@ def run(**kwargs):
 		Save(edlfile,masterfile)
 	elif op == "edit" and CmdLineMode():
 		filename = args.get("file",None)
+
+		if filename == None or filename in [ "masterfile", "master" ]:
+			filename = EDLMaster
+		elif filename == "edl":
+			filename = EDLFile
+
 		mode = "w" if args.append == None else "a"
 		autosave=args.get("save",False)
 
-		DirectEditEDL(filename=filename,save=autosave)
+		if filename != None and os.file.exists(filename):
+			DirectEditEDL(filename=filename,save=autosave)
+		else:
+			Msg(f"'{filename}' either doesn't exist, is not readable or is pure pish, fix it")
 	elif op in [ "cull", "expire" ]:
 		results = Cull(args.days)
 	elif op == "backup":
