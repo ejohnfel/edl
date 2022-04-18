@@ -109,7 +109,7 @@ class EDLEntry(Taggable):
 
 		ip = kwargs.get("ip",None)
 		user = kwargs.get("user",None)
-		timestamp = kwargs.get("timestamp",None)
+		timestamp = kwargs.get("timestamp",datetime.now())
 		owner = kwargs.get("owner",None)
 		abuse = kwargs.get("abuse",None)
 		comment = kwargs.get("comment",None)
@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,13)
+VERSION=(0,0,14)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1041,7 +1041,9 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 	if user == None:
 		user = getpass.getuser()
 
-	if type(timestamp) == str:
+	if timestamp == None:
+		timestamp = datetime.now()
+	elif type(timestamp) == str:
 		old_timestamp,timestamp = Timestamp(timestamp)
 
 	if comment == None:
