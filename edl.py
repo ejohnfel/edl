@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,20)
+VERSION=(0,0,21)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1407,7 +1407,7 @@ def DirectEditEDL(masterfile=None,edlfile=None,filename=None,save=False):
 	"""
 	global EDLMaster, EDLFile, AutoSave
 
-	if masterfile != None
+	if masterfile != None:
 		filename = EDLMaster
 	elif edlfile != None:
 		filename = EDLFile
