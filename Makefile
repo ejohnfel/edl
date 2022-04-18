@@ -70,7 +70,7 @@ endif
 install:
 ifeq ($(PLATFORM),linux)
 ifdef version
-	$(PYTHONTARGET) -m pip install --no-index $(PACKAGE)==$(version)
+	$(PYTHONTARGET) -m pip install --no-cache-dir $(PACKAGE)==$(version)
 else
 	$(PYTHONTARGET) -m pip install $(PACKAGE)
 endif

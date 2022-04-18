@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,21)
+VERSION=(0,0,22)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1416,9 +1416,9 @@ def DirectEditEDL(masterfile=None,edlfile=None,filename=None,save=False):
 
 	if ModuleMode(): return
 
-	reply = input("====> WARNING : Direct Editting is discouraged continue (y/N)? ")
+	reply = input("====> WARNING : Direct Editting is discouraged, continue anyway (y/N)? ").strip()
 
-	if reply == "y":
+	if reply in [ "y", "Y", "yes" ]:
 		BackUp(filename)
 
 		# Execute nano with the edl master
