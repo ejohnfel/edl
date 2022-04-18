@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,19)
+VERSION=(0,0,20)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1400,28 +1400,32 @@ def RemoveExclude(item,exclude_file=None):
 #
 
 # Direct Edit EDL List
-def DirectEditEDL(masterfile=None,edlfile=None,save=False):
+def DirectEditEDL(masterfile=None,edlfile=None,filename=None,save=False):
 	"""
 	Direct edit the EDL
 	Only active in CmdLineMode
 	"""
-	global EDLMaster, AutoSave
+	global EDLMaster, EDLFile, AutoSave
 
-	if masterfile == None: masterfile = EDLMaster
-	if edlfile == None: edlfile = EDLFile
+	if masterfile != None
+		filename = EDLMaster
+	elif edlfile != None:
+		filename = EDLFile
+	elif filename == None:
+		filename = EDLMaster
 
 	if ModuleMode(): return
 
 	reply = input("====> WARNING : Direct Editting is discouraged continue (y/N)? ")
 
 	if reply == "y":
-		BackUp(masterfile)
+		BackUp(filename)
 
 		# Execute nano with the edl master
-		subprocess.call(["nano",masterfile])
+		subprocess.call(["nano",filename])
 		Audit("EDL Master was editted manually")
 
-		if save or AutoSave: Save(edlfile,masterfile)
+		if save or AutoSave: Save(EDLFile,EDLMaster)
 
 # Get Comment
 def GetComment():
