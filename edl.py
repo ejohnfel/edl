@@ -701,7 +701,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,22)
+VERSION=(0,0,23)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1778,7 +1778,7 @@ def run(**kwargs):
 			if invalid:
 				Msg(f"Invalid entry - {entry}")
 			if existing:
-				Msg(f"{entry[0]} exists in EDL")
+				Msg(f"{entry['ip']} exists in EDL")
 
 				reply = input("Exists, Show (y/n)? ")
 
