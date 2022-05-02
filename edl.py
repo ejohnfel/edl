@@ -265,6 +265,9 @@ class EDLEntry(Taggable):
 		"""Get Whois Information"""
 
 		if self.entry != None:
+			owner = None
+			abuse = None
+
 			response = whois.GetIPInfo(self.entry["ip"])
 
 			if response and response[0] == 200:
@@ -701,7 +704,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,23)
+VERSION=(0,0,24)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
