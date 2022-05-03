@@ -704,7 +704,7 @@ Confirm=False
 AutoSave = False
 
 # Version
-VERSION=(0,0,24)
+VERSION=(0,0,25)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -946,7 +946,7 @@ def Search(search_str,by_type="ip",exit_early=False,silent=False,masterfile=None
 	tsc = TimestampConverter()
 
 	with open(masterfile, newline="") as csvfile:
-		reader = csv.DictReader(csvfile,Columns)
+		reader = csv.DictReader(csvfile)
 
 		for row in reader:
 			entry = EDLEntry().ReadRow(row)
