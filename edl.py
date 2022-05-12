@@ -700,11 +700,14 @@ class EDLShell(cmd.Cmd):
 # Ask before sumbit
 Confirm=False
 
+# Explicit No Prompt
+NoPrompt=False
+
 # Autosave EDLFIle
-AutoSave = False
+AutoSave=False
 
 # Version
-VERSION=(0,0,25)
+VERSION=(0,0,26)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1419,7 +1422,10 @@ def DirectEditEDL(masterfile=None,edlfile=None,filename=None,save=False):
 
 	if ModuleMode(): return
 
-	reply = input("====> WARNING : Direct Editting is discouraged, continue anyway (y/N)? ").strip()
+	reply = "y"
+
+	if not NoPrompt:
+		reply = input("====> WARNING : Direct Editting is discouraged, continue anyway (y/N)? ").strip()
 
 	if reply in [ "y", "Y", "yes" ]:
 		BackUp(filename)
@@ -1545,6 +1551,7 @@ def BuildParser():
 		__Parser__.add_argument("--exclude",help="Set Exclude file")
 		__Parser__.add_argument("--age",help="Set maximum age in days for cull operations")
 		__Parser__.add_argument("-p","--prompt",action="store_true",help="Set prompt before actions committed")
+		__Parser__.add_argument("-n","--noprompt", action="store_true",help="Set to no prompting")
 		__Parser__.add_argument("--autosave",action="store_true",help="Set Autosave mode for EDLFile")
 
 		# Create Sub parsers
@@ -1635,7 +1642,7 @@ def BuildParser():
 def ParseArgs(arguments=None):
 	"""Parse Arguments"""
 
-	global __Parser__, MaxAge, Confirm, EDLMaster, EDLFile, Excludes, AutoSave, NoIPv6
+	global __Parser__, MaxAge, Confirm, NoPrompt, EDLMaster, EDLFile, Excludes, AutoSave, NoIPv6
 	global Version
 
 	args = None
@@ -1676,7 +1683,12 @@ def ParseArgs(arguments=None):
 
 	# Prompt state
 	if args.prompt:
-		Confirm=True
+		Confirm = True
+		NoPrompt = False
+
+	if args.noprompt:
+		Confirm = False
+		NoPrompt = True
 
 	# Check Autosave
 	if args.autosave:
@@ -1782,6 +1794,8 @@ def run(**kwargs):
 				Msg(f"Invalid entry - {entry}")
 			if existing:
 				Msg(f"{entry['ip']} exists in EDL")
+
+				if NoPrompt: continue
 
 				reply = input("Exists, Show (y/n)? ")
 
