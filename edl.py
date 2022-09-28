@@ -707,7 +707,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,26)
+VERSION=(0,0,28)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -736,6 +736,10 @@ MaxAge=timedelta(days=90)
 
 # Last added item
 LastAdd=""
+
+# Audit Messages
+# Excluded Audit Message
+AuditMsg_Excluded = "The IP {} is excluded from being blocked"
 
 #
 # Lambdas
@@ -904,7 +908,7 @@ def Excluded(ip,exclude_file=None):
 
 					if ip in net:
 						excluded = True
-						Audit(aud_msg.format(ip))
+						Audit(AuditMsg_Excluded.format(ip))
 						break
 				elif item == ip:
 					excluded = True
@@ -1283,7 +1287,9 @@ def Cull(max_age=None,masterfile=None,edlfile=None,simulate=False):
 	lines = 0
 
 	with open(masterfile,newline='') as csvfile:
-		reader = csv.DictReader(csvfile,Columns)
+		# Assuming here that the CSV file has a header... if not, an error may result here
+		# reader = csv.DictReader(csvfile,Columns)
+		reader = csv.DictReader(csvfile)
 
 		for row in reader:
 			lines += 1
@@ -1544,7 +1550,7 @@ def BuildParser():
 		__Parser__ = argparse.ArgumentParser(description="EDL Manager")
 
 		__Parser__.add_argument("-v","--version",action="store_true",help="Show version")
-		__Parser__.add_argument("--debug",action="store_true",help="Place app in debug mode")
+		__Parser__.add_argument("-d","--debug",action="store_true",help="Place app in debug mode")
 		__Parser__.add_argument("--noipv6",action="store_true",help="IPv6 addresses are not accepted")
 		__Parser__.add_argument("--master",help="Set Master file")
 		__Parser__.add_argument("--edl",help="Set EDL Data file")
