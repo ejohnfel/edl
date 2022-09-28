@@ -131,6 +131,16 @@ class EDLEntry(Taggable):
 			self.entry["comment"] = comment
 			self.entry["status"] = status
 
+	# Print Entry
+	def Print(output=None):
+		"""Print Entry"""
+
+		if output:
+			output.write(entry)
+			output.write("\n")
+		else:
+			print(self.entry)
+
 	# Get IP from entry
 	def IP(self,value=None):
 		"""Return the blocked IP from the EDL Line"""
@@ -707,7 +717,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,28)
+VERSION=(0,0,29)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1761,6 +1771,15 @@ def run(**kwargs):
 			Msg(f"'{filename}' either doesn't exist, is not readable or is pure pish, fix it")
 	elif op in [ "cull", "expire" ]:
 		results = Cull(args.days)
+
+		items_culled = len(results)
+
+		if items_culled > 0:
+			Msg(f"{items_culled} records culled")
+
+			for item in results:
+				item.Print()
+
 	elif op == "backup":
 		Backup(EDLMaster)
 		Backup(EDLFile)
