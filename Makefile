@@ -1,7 +1,7 @@
 PACKAGE=edl-mod
 EPACKAGE=edl_mod
 CODE=edl.py
-SRC=src/edl/$(CODE)
+SRC=$(CODE)
 PYTHONTARGET=python3.8
 CHEATTARGET=/usr/lib/$(PYTHONTARGET)
 BINHOME=/usr/local/bin
