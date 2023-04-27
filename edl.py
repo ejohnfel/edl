@@ -10,7 +10,7 @@ to search, add, delete and view the designated list.
 This module produces 2 EDL's, a master list and the actual EDL. The actual EDL is one IP
 address per line.
 
-By default, the list only takes IP addresses and will reject anything that else that is NOT
+By default, this script only takes IP addresses and will reject anything that is NOT
 resolvable into an IP address.
 
 The master list contains the IP, user who submitted the IP, the timestamp, whois owner and
@@ -49,6 +49,7 @@ import subprocess
 import shutil
 import socket
 import cmd
+import configparser
 
 # Ma Stoof
 
@@ -717,11 +718,14 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,29)
+VERSION=(0,0,30)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
 __Parser__ = None
+
+# Config File
+__Config__ = "/etc/edl/config"
 
 # Response list
 Responses = list()
@@ -1054,7 +1058,7 @@ def AddEDLEntry(entry,masterfile=None,edlfile=None):
 
 # Add IP (or list of IPs, or DNS Names) To EDL Master
 def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect=False,nosleep=False,masterfile=None,edlfile=None):
-	"""Add Host/List of Hosts/DNS names  to EDL Master"""
+	"""Add Host/List of Hosts/Subnets/List of subnets/DNS names to EDL Master"""
 
 	global LastAdd, Responses, EDLRowTemplate
 
@@ -1084,12 +1088,13 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 
 	# Check for DNS names
 	for host in hosts:
-		if not ValidIP(host):
+		if IsNetwork(host) or ValidIP(host):
+			sanity_check.append(host)
+		else:
+			# Not subnet or IP
 			ips = HostIPCheck(host)
 
 			sanity_check.extend(ips)
-		else:
-			sanity_check.append(host)
 
 	hosts = sanity_check
 
@@ -1876,15 +1881,28 @@ def run(**kwargs):
 def Initialize():
 	"""Initialize Module"""
 
-	global __EnvEDLMaster__,__EnvEDLFile__,__EnvEDLExcludes__,__EnvComment__
+	global __EnvEDLMaster__,__EnvEDLFile__,__EnvEDLExcludes__,__EnvComment__,__Config__
 	global EDLFile, EDLMaster, Excludes
 
 	random.seed()
 
+	comment = "No comment at this time"
+
+	if os.path.exists(__Config__):
+		cfg = configparser.ConfigParser()
+
+		cfg.read(__Config__)
+
+		EDLMaster = cfg.get("appsettings","EDLMaster",fallback="/tmp/edlmaster.csv")
+		EDLFile = cfg.get("appsettings","EDLFile",fallback="/tmp/edlfile.csv")
+		Excludes = cfg.get("appsettings","Excludes",fallback="/tmp/excludes.txt")
+
+		comment = cfg.get("appsettings","Comment",fallback=comment)
+
 	# Check Environment
-	EDLMaster = os.environ.get(__EnvEDLMaster__,EDLMaster)
-	EDLFile = os.environ.get(__EnvEDLFile__,EDLFile)
-	Excludes = os.environ.get(__EnvEDLExcludes__,Excludes)
+	if __EnvEDLMaster__ in os.environ: EDLMaster = os.environ.get(__EnvEDLMaster__,EDLMaster)
+	if __EnvEDLFile__ in os.environ: EDLFile = os.environ.get(__EnvEDLFile__,EDLFile)
+	if __EnvEDLExcludes__ in os.environ: Excludes = os.environ.get(__EnvEDLExcludes__,Excludes)
 
 	# Check for preset comment in ENV, preset if there
 	comment = os.environ.get(__EnvComment__,None)
