@@ -718,7 +718,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,31)
+VERSION=(0,0,32)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1783,7 +1783,7 @@ def run(**kwargs):
 			Msg(f"{items_culled} records culled")
 
 			for item in results:
-				item.Print()
+				Msg(item)
 
 	elif op == "backup":
 		Backup(EDLMaster)
