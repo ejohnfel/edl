@@ -718,7 +718,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,32)
+VERSION=(0,0,33)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -993,7 +993,7 @@ def AppendToEDL(entry,masterfile=None,edlfile=None):
 	"""
 	Append new entry to the EDL
 	"""
-	global EDLMaster, Columns, AutoSave, NoIPv6
+	global EDLMaster, Columns, AutoSave, NoIPv6, AuditFile
 
 	DbgMsg("Entering AppendToEDL")
 
@@ -1021,7 +1021,8 @@ def AppendToEDL(entry,masterfile=None,edlfile=None):
 
 			entry.WriteRow(writer)
 
-		if Audit: Audit("Appended {} to edl master".format(entry.GetRow()))
+		if AuditFile: Audit("Appended {} to edl master".format(entry.GetRow()))
+
 		if AutoSave: Save(edlfile,masterfile)
 	else:
 		DbgMsg(f"Rejected {ip}, NoIPv6 = {NoIPv6}")
