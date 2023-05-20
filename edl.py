@@ -718,7 +718,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,34)
+VERSION=(0,0,35)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1140,7 +1140,7 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 				results.append(tuple(result.values()))
 		else:
 			# Excluded
-			entry["excluded"] = True
+			results["excluded"] = True
 			results.append(tuple(entry.values()))
 
 		if len(hosts) > 1 and not nosleep:
