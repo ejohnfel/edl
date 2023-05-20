@@ -718,7 +718,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,33)
+VERSION=(0,0,34)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -905,6 +905,8 @@ def Excluded(ip,exclude_file=None):
 
 	global Excludes
 
+	DbgMsg("Entering edl::Excluded",dbglabel="edl")
+
 	excluded = False
 
 	if exclude_file == None: exclude_file = Excludes
@@ -927,6 +929,8 @@ def Excluded(ip,exclude_file=None):
 				elif item == ip:
 					excluded = True
 					break
+
+	DbgMsg("Exiting edl::Excluded",dbglabel="edl")
 
 	return excluded
 
