@@ -728,7 +728,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,38)
+VERSION=(0,0,39)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
