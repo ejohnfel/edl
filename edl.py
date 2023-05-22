@@ -718,7 +718,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,36)
+VERSION=(0,0,37)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1130,9 +1130,6 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 			}
 
 		if not Excluded(host):
-			DbgMsg(f"edl::Add - {host} is not excluded",dbglabel="edl")
-			if ph.IsDebugEnabled("edl-breakpoint"): breakpoint()
-
 			found = FindEntry(host)
 
 			if found == None:
@@ -1151,11 +1148,7 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 				results.append(tuple(result.values()))
 		else:
 			# Excluded
-
-			DbgMsg(f"edl::Add - {host} excluded",dbglabel="edl")
-			if ph.IsDebugEnabled("edl-breakpoint"): breakpoint()
-
-			results["excluded"] = True
+			result["excluded"] = True
 			results.append(tuple(entry.values()))
 
 		if len(hosts) > 1 and not nosleep:
