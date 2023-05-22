@@ -718,7 +718,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,35)
+VERSION=(0,0,36)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -999,7 +999,7 @@ def AppendToEDL(entry,masterfile=None,edlfile=None):
 	"""
 	global EDLMaster, Columns, AutoSave, NoIPv6, AuditFile
 
-	DbgMsg("Entering AppendToEDL")
+	DbgMsg("Entering edl::AppendToEDL",dbglabel="edl")
 
 	if masterfile == None: masterfile = EDLMaster
 
@@ -1032,11 +1032,15 @@ def AppendToEDL(entry,masterfile=None,edlfile=None):
 		DbgMsg(f"Rejected {ip}, NoIPv6 = {NoIPv6}")
 		success = False
 
+	DbgMsg("Exiting edl::AppendToEDL",dbglabel="edl")
+
 	return success
 
 # Add EntryEntry
 def AddEDLEntry(entry,masterfile=None,edlfile=None):
 	"""Add Filled In EDLEntry To EDL"""
+
+	DbgMsg("Entering edl::AddEDLEntry",dbglabel="edl")
 
 	existing = False
 	excluded = False
@@ -1059,6 +1063,8 @@ def AddEDLEntry(entry,masterfile=None,edlfile=None):
 	else:
 		success = False
 
+	DbgMsg("Exiting edl::AddEDLEntry",dbglabel="edl")
+
 	return (success,excluded,existing)
 
 # Add IP (or list of IPs, or DNS Names) To EDL Master
@@ -1066,6 +1072,8 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 	"""Add Host/List of Hosts/Subnets/List of subnets/DNS names to EDL Master"""
 
 	global LastAdd, Responses, EDLRowTemplate
+
+	DbgMsg("Entering edl::Add",dbglabel="edl")
 
 	if user == None:
 		user = getpass.getuser()
@@ -1122,6 +1130,9 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 			}
 
 		if not Excluded(host):
+			DbgMsg(f"edl::Add - {host} is not excluded",dbglabel="edl")
+			if ph.IsDebugEnabled("edl-breakpoint"): breakpoint()
+
 			found = FindEntry(host)
 
 			if found == None:
@@ -1140,11 +1151,17 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 				results.append(tuple(result.values()))
 		else:
 			# Excluded
+
+			DbgMsg(f"edl::Add - {host} excluded",dbglabel="edl")
+			if ph.IsDebugEnabled("edl-breakpoint"): breakpoint()
+
 			results["excluded"] = True
 			results.append(tuple(entry.values()))
 
 		if len(hosts) > 1 and not nosleep:
 			time.sleep(4)
+
+	DbgMsg("Exiting edl::Add",dbglabel="edl")
 
 	return results
 
@@ -1395,6 +1412,7 @@ def RemoveExclude(item,exclude_file=None):
 	"""
 	Remove the given IP or subnet from the excludes list
 	"""
+
 	global Excludes
 
 	if exclude_file == None: exclude_file = Excludes
@@ -1747,6 +1765,8 @@ def run(**kwargs):
 		else:
 			args,unknowns = ParseArgs()
 
+	DbgMsg("Entering run",dbglabel="edl")
+
 	#
 	# Now Check for actions
 	#
@@ -1875,6 +1895,8 @@ def run(**kwargs):
 			Msg("Is in exclude list")
 		else:
 			Msg("Not in exclude list")
+
+	DbgMsg("Exiting run",dbglabel="edl")
 
 	return results
 
