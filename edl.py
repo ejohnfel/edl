@@ -211,6 +211,16 @@ class EDLEntry(Taggable):
 
 		return self.entry
 
+	def Values(self):
+		"""Get Values from Entry Dict"""
+
+		results = list()
+
+		if self.entry is not None:
+			results = self.entry.values()
+
+		return results
+
 	#
 	# Object to CSV Row or CSV Row to Object Operations
 	#
@@ -718,7 +728,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,37)
+VERSION=(0,0,38)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1149,7 +1159,7 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 		else:
 			# Excluded
 			result["excluded"] = True
-			results.append(tuple(entry.values()))
+			results.append(tuple(entry.Values()))
 
 		if len(hosts) > 1 and not nosleep:
 			time.sleep(4)
