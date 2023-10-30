@@ -7,6 +7,9 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+/bin
+lib64
+pyvenv.cfg
 .Python
 build/
 develop-eggs/
@@ -133,3 +136,4 @@ dmypy.json
 .prereqs
 verfix.py
 edl-excl.txt
+bulk.txt

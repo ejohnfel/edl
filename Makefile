@@ -2,7 +2,7 @@ PACKAGE=edl-mod
 EPACKAGE=edl_mod
 CODE=edl.py
 SRC=$(CODE)
-PYTHONTARGET=python3.8
+PYTHONTARGET=python3
 CHEATTARGET=/usr/lib/$(PYTHONTARGET)
 BINHOME=/usr/local/bin
 BINNAME=edl
@@ -67,7 +67,7 @@ else
 	@py -m pip install .
 endif
 
-install:
+install: installreq
 ifeq ($(PLATFORM),linux)
 ifdef version
 	$(PYTHONTARGET) -m pip install --no-cache-dir $(PACKAGE)==$(version)
@@ -83,7 +83,7 @@ uninstall:
 
 installreq: requirements.txt
 ifeq ($(PLATFORM),linux)
-	$(PYTHONTARGET) -m pip install -r $(RECFILE)
+	@[ -f $(RECFILE) ] && $(PYTHONTARGET) -m pip install -r $(RECFILE)
 else
 
 endif
@@ -106,6 +106,10 @@ installtool:
 	@sudo cp $(CODE) $(BINHOME)/$(BINNAME)
 	@sudo chmod +x $(BINHOME)/$(BINNAME)
 
+freeze:
+	@$(PYTHONTARGET) -m pip freeze > $(RECFILE)
+
+
 actions:
 	@printf "prereqs\t\tInstall prereqs\n"
 	@printf "build\t\tBuild Package\n"
@@ -123,4 +127,5 @@ actions:
 	@printf "cheatinstall\tDo the cp /usr/lib thing\n"
 	@printf "cheatrm\tClean up code from cheatinstall\n"
 	@printf "installtool\tInstall edl.py as a cmd line tool in $(BINHOME)"
+	@printf "freeze\t\tFreeze module (output requirements.txt)\n"
 	@printf "clean\t\tClean build dist\n"

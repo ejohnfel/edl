@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.8
+#!/usr/bin/env python3
 
 """
 EDL - Edit an External Dynamic List
@@ -54,7 +54,7 @@ import configparser
 # Ma Stoof
 
 import py_helper as ph
-from py_helper import Msg,DbgMsg,ErrMsg,DebugMode,CmdLineMode,ModuleMode
+from py_helper import Msg,DbgMsg,DbgAuto,ErrMsg,DebugMode,CmdLineMode,ModuleMode
 from py_helper import Taggable, AuditTrail, ValidIP, IsIPv4, IsIPv6, IsNetwork
 from py_helper import Clear, NewLine, Pause, Menu
 from py_helper import SwapFile, Dump, BackUp, Restore, Touch, TmpFilename
@@ -309,26 +309,80 @@ class EDLShell(cmd.Cmd):
 	file = None
 
 	# Parsers
-	__parser__ = None
-	# Create Command Parer
-	__create_parser__ = None
-	# Save Parser
-	__save_parser__ = None
-	# Dump Parser
-	__dump_parser__ = None
+	parsers = dict()
 
-	# Set Parser
-	def SetParser(self,parser):
-		"""Set Parser"""
+	def __init__(self):
+		"""Init Instance"""
 
-		self.__parser__ = parser
+		# Init Super class
+		super().__init__()
+
+		# Edit Master File (Completely Interactive Feature)
+		#edit_master_parser = subparsers.add_parser("edit",help="Edit Masterfile")
+		#edit_master_parser.add_argument("-s","--save",action="store_true",help="Once master edit completes, save EDL")
+		#edit_master_parser.add_argument("file",nargs="?",help="File to edit, masterfile by default")
+
+		# Backup command (Non-Interactive)
+		#backup_parser = subparsers.add_parser("backup",help="Backup data files")
+
+		# Restore command (Non-Interactive)
+		#restore_parser = subparsers.add_parser("restore",help="restore data files")
+
+		# Cull (Non-Interactive Feature)
+		#cull_parser = subparsers.add_parser("cull",aliases=["expire"],help="Cull Master/EDL file of older records")
+		#cull_parser.add_argument("days",nargs="?",default=None,help="Maximum age of entry in days")
+
+		# Dump Master File (Completely Interactive)
+		#dump_parser = subparsers.add_parser("dump",aliases=["get","getmaster","getm"],help="Dump Master file")
+		#dump_parser.add_argument("file_spec",nargs="?",choices=["master","masterfile","edl","edlfile","excludes"],help="Optional file specification")
+
+		# More complex sub commands
+
+		# Remove (Partially Interactive)
+		#remove_parser = subparsers.add_parser("remove",aliases=["rm","del","delete"],help="Remove specified EDL Entry")
+		#remove_parser.add_argument("host",help="Host to remove (IP or DNS name)")
+
+		# Bulk Remove (Partially Interactive)
+		#bulkremove_parser = subparsers.add_parser("bulkremove",aliases=["bulkrm","bulkdel","bulkdelete"],help="Bulk Remove")
+		#bulkremove_parser.add_argument("file",help="File to import for bulk remove")
+
+		# Search (Partially Interactive)
+		#search_parser = subparsers.add_parser("search",help="Search Master file")
+		#search_parser.add_argument("by_type",choices=["ip","cidr","dns","user","owner","abuse","timestamp"],default="ip",help="Search by given type")
+		#search_parser.add_argument("search_str",help="Thing to search for")
+
+		# Exclude (Non-Interactive)
+		#exclude_parser = subparsers.add_parser("exclude",aliases=["ex"],help="Exclude Host or CIDR Range")
+		#exclude_parser.add_argument("host",help="Host or CIDR Range to add to excludes")
+		#exclude_parser.add_argument("comment",nargs="?",help="Comment for entry")
+
+		# Remove Exclusion (Partially Interactive)
+		#rmexclude_parser = subparsers.add_parser("removeexclude",aliases=["rmex","removeex","rmx","removex"],help="Remove exclusion")
+		#rmexclude_parser.add_argument("hosts",help="Host or CIDR to remove from excludes")
+
+		# View/Dump Exclude List (Partially Interactive)
+		#viewexclude_parser = subparsers.add_parser("viewexcludes",aliases=["vex","viewx","dumpex","getex"],help="View/Dump/Return excludes list")
+
+		# Check Exclude for item
+		#checkex_parser = subparsers.add_parser("checkexcludes",aliases=["chex","checkex"],help="Check excludes for item")
+		#checkex_parser.add_argument("exclude",help="Exclude to check for")
+
+		# Edit IP (Completely Interactive)
+		#editip_parser = subparsers.add_parser("edithost",aliases=["editip"],help="Edit single host record in master")
+		#editip_parser.add_argument("host",help="Host entry to edit")
 
 	# Init Internal Parsers
 	def InitParsers(self):
 		"""Init Parsers"""
 
-		if self.__create_parser__ == None:
-			self.__create_parser__ = parser = argparse.ArgumentParser(description="File creation sub command")
+		if not "debug" in self.parsers:
+			# Debug Mode Parser
+			self.parsers["debug"] = parser = argparse.ArgumentParser(description="Enable or disable debugmode")
+			parser.add_argument("operation",choices=["get","true","false","enable","disable"],help="Enable or disable debugmode")
+
+		if not "create" in self.parsers:
+			# Create Parser
+			self.parsers["create"] = parser = argparse.ArgumentParser(description="File creation sub command")
 			subparser = parser.add_subparsers(help="File creation operations",dest="operation")
 
 			all_parser = subparser.add_parser("all",help="Create all files")
@@ -345,16 +399,83 @@ class EDLShell(cmd.Cmd):
 			ex_parser = subparser.add_parser("excludes",help="Create excludes file")
 			ex_parser.add_argument("excludes",nargs="?",help="Path to excludes file")
 
-		if self.__save_parser__ == None:
-			self.__save_parser__ = parser = argparse.ArgumentParser(description="Save EDL sub command")
+		if not "save" in self.parsers:
+			# Save Parser
+			self.parsers["save"] = parser = argparse.ArgumentParser(description="Save EDL sub command")
 			parser.add_argument("edl",help="EDL file to save to")
 			parser.add_argument("master",help="Master file for EDL")
 
-		if self.__dump_parser__ == None:
-			self.__dump_parser__ = parser = argparse.ArgumentParser(description="Dump file sub command")
-			parser.add_argument("file",nargs="?",help="Dump selected file (master,edl,excludes)")
+		if not "add" in self.parsers:
+			# Add Functionality (Partially Interactive Feature)
 
-	# Create All Files
+			self.parsers["add"] = parser = argparse.ArgumentParser(description="Add EDL Sub command")
+
+			parser.add_argument("-p","--protect",action="store_true",help="Set protection for record")
+			parser.add_argument("host",help="Host to block (by default, IPv4 or hostname")
+			parser.add_argument("comment",nargs='?',help="Comment for EDL Entry")
+
+		if not "bulkadd" in self.parsers:
+			# Bulk Add Functionality
+
+			self.parsers["bulkadd"] = parser = argparse.ArgumentParser(description="Bulk add sub command")
+
+			parser.add_argument("-p","--protect",action="store_true",help="Set protection")
+			parser.add_argument("-c","--comment",default=None,help="Add comment")
+			parser.add_argument("filenames",nargs="+",help="Filenames containing new adds")
+
+		if not "remove" in self.parsers:
+			# Remove Functionality
+
+			self.parsers["remove"] = parser = argparse.ArgumentParser(description="Remove sub command")
+
+			parser.add_argument("host",help="Host entry to remove")
+
+		if not "bulkremove" in self.parsers:
+			# Bulk Remove Functionality
+
+			self.parsers["bulkremove"] = parser = argparse.ArgumentParser(description="Bulk Remove sub command")
+
+			parser.add_argument("filenames",nargs="+",help="Files containing hosts to remove")
+
+		if not "status" in self.parsers:
+			# Status Parser
+			self.parsers["status"] = parser = argparse.ArgumentParser(description="Status sub command")
+			subparser = parser.add_subparsers(help="Entry status operations",dest="operation")
+
+			ssearch = subparser.add_parser("search",help="Search by status")
+
+			ssearch.add_argument("value",help="Status value to search for")
+			ssearch.add_argument("op",nargs="?",choices=["eq","ne","lt","le","gt","ge"],default="eq",help="Search operation")
+
+			modify = subparser.add_parser("modify",help="Modify entry status")
+
+			modify.add_argument("ip",help="IP of entry to modify")
+			modify.add_argument("value",help="New status value")
+
+		if not "dump" in self.parsers:
+			self.parsers["dump"] = parser = argparse.ArgumentParser(description="Dump file sub command")
+			parser.add_argument("file",nargs="?",choices=["master","edl","excludes",""],default="master",help="Dump selected file (master,edl,excludes)")
+
+	# Get or Set Debugmode (done)
+	def do_debug(self,arguments):
+		"""Get or set DebugMode"""
+
+		if not "debug" in self.parsers: self.InitParsers()
+
+		arguments = ph.ParseDelimitedString(arguments)
+
+		args,unknowns = self.parsers["debug"].parse_known_args(arguments)
+
+		if args.operation == "get":
+			Msg(f"Debug mode {DebugMode()}")
+		elif args.operation in [ "true","enable" ]:
+			Msg("Enabling debugmode")
+			DebugMode(True)
+		elif args.operation in [ "false", "disable" ]:
+			Msg("Disabling debug mode")
+			DebugMode(False)
+
+	# Create All Files (done)
 	def do_create(self,arguments):
 		"""
 		Create Masterfile, EDLFile and exlcudes, if they do not current exist
@@ -362,15 +483,15 @@ class EDLShell(cmd.Cmd):
 
 		global EDLMaster, EDLFile, Excludes
 
-		if self.__create_parser__ == None: self.InitParsers()
+		if not "create" in self.parsers: self.InitParsers()
 
 		arguments = ph.ParseDelimitedString(arguments)
 
 		try:
-			args,unknowns = self.__create_parser__.parse_known_args(arguments)
+			args,unknowns = self.parsers["create"].parse_known_args(arguments)
 
 			if args.operation == "all":
-				DbgMsg("Creating ALL - {args.master}, {args.edl}, {args.excludes}")
+				DbgMsg(f"Creating ALL - {args.master}, {args.edl}, {args.excludes}")
 
 				if args.masterfile != None:
 					EDLMaster = args.masterfile
@@ -412,18 +533,6 @@ class EDLShell(cmd.Cmd):
 
 		except SytemExit:
 			pass
-
-	# Get or Set Debugmode
-	def do_debugmode(self,arguments):
-		"""Get or set DebugMode"""
-
-		if arguments != None and arguments != "":
-			try:
-				DebugMode(ParseBool(arguments))
-			except:
-				Msg(f"What is {arguments}?")
-		else:
-			Msg(f"Debugmode = {DebugMode()}")
 
 	# Get or Set EDL Master file
 	def do_masterfile(self,arguments):
@@ -518,36 +627,37 @@ class EDLShell(cmd.Cmd):
 
 		global EDLMaster, EDLFile
 
-		if self.__save_parser__ == None: self.InitParsers()
+		if not "save" in self.parsers: self.InitParsers()
 
 		arguments = arguments.split(" ")
 
 		try:
-			args,unknowns = self.__save__parser__.parse_known_args(arguments)
+			args,unknowns = self.parsers["save"].parse_known_args(arguments)
 
-			edlfile = EDLFIle if args.edl == None else args.edl
+			edlfile = EDLFile if args.edl == None else args.edl
 			masterfile = EDLMaster if args.master == None else args.master
 
 			Save(edlfile,masterfile)
 		except SystemExit:
 			pass
 
-	# Add To EDL
+	# Add To EDL (done)
 	def do_add(self,arguments):
 		"""Add Entry to EDL"""
 
-		global Responses
+		global Responses, EDLMaster, EDLFile
 
-		params = list()
+		if not "add" in self.parsers: self.InitParsers()
 
-		params.append("add")
-
-		args = ph.ParseDelimitedString(arguments)
-
-		params.extend(args)
+		arguments = ph.ParseDelimitedString(arguments)
 
 		try:
-			args, unknowns = self.__parser__.parse_known_args(params)
+			args, unknowns = self.parsers["add"].parse_known_args(arguments)
+
+			status = 0
+
+			if args.protect:
+				status = 1
 
 			comment = args.comment
 
@@ -558,48 +668,114 @@ class EDLShell(cmd.Cmd):
 			else:
 				comment = "No comment provided"
 
-			entries = Add(args.host,comment=args.comment)
+			entries = Add(args.host,comment=args.comment,protect=args.protect)
 
 			for entry in entries:
 				Msg(f"Added {entry}")
 		except SystemExit:
 			pass
 
-	# Bulk Add
-	def do_bulkadd(self,args):
+	# Bulk Add (done)
+	def do_bulkadd(self,arguments):
 		"""Bulk Add"""
 
-		filename,comment = args.split(" ",1)
+		if not "bulkadd" in self.parsers: self.InitParsers()
 
-		if comment == "": comment = None
+		arguments = ph.ParseDelimitedString(arguments)
 
-		BulkAdd(filename,comment=comment)
+		args,unknowns = self.parsers["bulkadd"].parse_known_args(arguments)
 
-	# Remove From EDL
+		if DebugMode(): breakpoint()
+
+		comment = args.comment if args.comment != '' else None
+
+		for fname in args.filenames:
+			BulkAdd(fname,comment,protect=args.protect)
+
+	# Remove From EDL (done)
 	def do_remove(self,arguments):
 		"""Remove Entry From EDL"""
 
-		params = list()
+		if not "remove" in self.parsers: self.InitParsers()
 
-		params.append("remove")
+		arguments = ph.ParseDelimitedString(arguments)
 
-		params.extend(re.split("\s+",arguments))
-
-		args = __parser__.parse_args(params)
+		args,unknowns = self.parsers["remove"].parse_known_args(arguments)
 
 		removed = Remove(args.host)
 
-	# Remove Alias
+		if removed > 0:
+			Msg(f"Removed {args.host}")
+		else:
+			Msg(f"{args.host} not found in masterfile")
+
+	# Remove Alias (done)
 	def do_del(self,arguments):
 		"""Remove Alias"""
 
 		self.do_remove(arguments)
 
-	# Bulk Remove
-	def do_bulkrm(self,args):
+	# Remove Alias (done)
+	def do_rm(self,arguments):
+		"""Remove Alias"""
+
+		self.do_remove(arguments)
+
+	# Bulk Remove (done)
+	def do_bulkremove(self,arguments):
 		"""Bulk Remove"""
 
-		BulkRemove(args)
+		if not "bulkremove" in self.parsers: self.InitParsers()
+
+		arguments = ph.ParseDelimitedString(arguments)
+
+		args,unknowns = self.parsers["bulkremove"].parse_known_args(arguments)
+
+		for fname in args.filenames:
+			BulkRemove(fname)
+
+	# Bulk Remove (done)
+	def do_bulkrm(self,arguments):
+		"""Bulk Remove"""
+
+		self.do_bulkremove(arguments)
+
+	# Status Search (done)
+	def do_status(self,arguments):
+		"""Search By Status With Different Operations"""
+
+		global EDLMaster
+
+		if not "status" in self.parsers: self.InitParsers()
+
+		arguments = ph.ParseDelimitedString(arguments)
+
+		try:
+			args,unknowns = self.parsers["status"].parse_known_args(arguments)
+
+			if args.operation == "search":
+				DbgMsg(f"Searching entries in {EDLMaster} by status {args.op} {args.value}")
+
+				results = StatusSearch(int(args.value),op=args.op,masterfile=EDLMaster)
+
+				for result in results:
+					Msg(result)
+			elif args.operation in [ "modify", "mod" ]:
+				DbgMsg(f"Modifying entry with {args.ip} to {args.value}")
+
+				result = StatusModify(args.ip,int(args.value),masterfile=EDLMaster)
+
+				if result is not None:
+					Msg(result)
+				else:
+					Msg("{args.ip} record not found")
+			else:
+				Msg("No operation, search or modify, can't do anything, you did not provide a proper sub command")
+
+		except SystemExit:
+			pass
+		except Exception as err:
+			ErrMsg(err,"An error occured when trying search by status")
 
 	# Search From EDL
 	def do_search(self,arguments):
@@ -639,16 +815,20 @@ class EDLShell(cmd.Cmd):
 
 		ph.Page(buffer)
 
-	# Dump File
+	# Dump File (done)
 	def do_dump(self,arguments):
 		"""Dump File"""
 
 		global EDLMaster,EDLFile,Excludes
 
-		if self.__dump_parser__ == None: self.InitParsers()
+		if not "dump" in self.parsers: self.InitParsers()
+
+		if arguments == "": arguments = "master"
+
+		arguments = ph.ParseDelimitedString(arguments)
 
 		try:
-			args,unknowns = self.__dump_parser__.parse_known_args(arguments.split(" "))
+			args,unknowns = self.parsers["dump"].parse_known_args(arguments)
 
 			file = None
 
@@ -704,12 +884,12 @@ class EDLShell(cmd.Cmd):
 		for comment in Responses:
 			Msg(f"\t{comment}")
 
-	# Exit
+	# Exit (done)
 	def do_quit(self,args):
 		"""Exit Shell"""
 		return True
 
-	# Exit
+	# Exit (done)
 	def do_exit(self,arguments):
 		"""Exit Shell"""
 		return True
@@ -728,7 +908,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,39)
+VERSION=(0,0,40)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -968,6 +1148,68 @@ def FindEntry(ip,masterfile=None):
 
 	return entry
 
+# Search Entries by Status Value
+def StatusSearch(value,op="eq",masterfile=None):
+	"""Search EDL Records by Status"""
+
+	global EDLMaster
+
+	if masterfile == None: masterfile = EDLMaster
+
+	hits = list()
+
+	with open(masterfile,newline="") as csvfile:
+		reader = csv.DictReader(csvfile)
+
+		try:
+			for row in reader:
+				status = int(row["status"])
+
+				if op == "eq" and status == value:
+					hits.append(row)
+				elif op == "ne" and status != value:
+					hits.append(row)
+				elif op == "lt" and status < value:
+					hits.append(row)
+				elif op == "le" and status <= value:
+					hits.append(row)
+				elif op == "gt" and status > value:
+					hits.append(row)
+				elif op == "ge" and status >= value:
+					hits.append(row)
+		except Exception as err:
+			ErrMsg(err,f"There was an error while searching {masterfile}")
+
+	return hits
+
+# Modify Status of EDL Entry
+def StatusModify(record_id,value,masterfile=None):
+	"""Modify Status of EDL Entry"""
+
+	global EDLMaster, Columns
+
+	if masterfile == None: masterfile = EDLMaster
+
+	try:
+		with open(masterfile,newline="") as master:
+			reader = csv.DictReader(master)
+
+			tmpfilename = TmpFilename()
+
+			with open(tmpfilename,"w",newline="") as tmpfile:
+				writer = csv.DictWriter(tmpfile,Columns)
+
+				for row in reader:
+					if row["ip"] == record_id:
+						row["status"] = value
+
+					writer.writerow(row)
+
+		BackUp(masterfile)
+		SwapFile(tmpfilename,masterfile)
+	except Exception as err:
+		ErrMsg(err,f"An error occurred while trying to modify a status value in {masterfile} for {record_id}")
+
 # Search For Block
 def Search(search_str,by_type="ip",exit_early=False,silent=False,masterfile=None):
 	"""Search the EDL for an existing block"""
@@ -986,7 +1228,12 @@ def Search(search_str,by_type="ip",exit_early=False,silent=False,masterfile=None
 		for row in reader:
 			entry = EDLEntry().ReadRow(row)
 
-			if by_type != "timestamp" and search_str == row[by_type]:
+			if by_type == "status" and int(search_str) == int(row[by_type]):
+				values = list(row.values())
+				hits.append(values)
+
+				if exit_early: break
+			elif by_type != "timestamp" and search_str == row[by_type]:
 				values = list(row.values())
 				hits.append(values)
 
@@ -1171,7 +1418,7 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 # Bulk Add
 def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect=False,masterfile=None,edlfile=None):
 	"""
-	Bulk add file of IP address to EDL. The file should be on IP per line.
+	Bulk add file of IP address to EDL. The file should be one IP per line.
 	"""
 
 	global AutoSave
@@ -1338,6 +1585,13 @@ def Cull(max_age=None,masterfile=None,edlfile=None,simulate=False):
 			entry.ReadRow(row)
 
 			if entry.Status():
+				# 0 means no status (i.e. not protected, so we allow culling)
+				# If status is non-zero, we do not cull this record, it must
+				# be manually deleted. By default, a value of 1 indicates
+				# a perma-ban (a no cull record), however, I reserve the
+				# option that values other than 0 and 1 could communicate
+				# other status' in the future. That fact that they are not
+				# 1 and non-zero implies they are not automatically cullable
 				continue
 
 			if entry.Timestamp() <= too_old:
@@ -1348,9 +1602,8 @@ def Cull(max_age=None,masterfile=None,edlfile=None,simulate=False):
 	if len(matches) > 0 and not simulate:
 		DbgMsg(f"Removing old items")
 
-		if not DebugMode(): Remove(matches,masterfile,edlfile)
-
 		# No need to autosave here, Remove will handle it
+		Remove(matches,masterfile,edlfile)
 
 	DbgMsg(f"{lines} processed, {len(matches)} matched")
 
@@ -1588,7 +1841,7 @@ def BuildParser():
 
 	if __Parser__ == None:
 		# Config Argument Parser
-		__Parser__ = argparse.ArgumentParser(description="EDL Manager")
+		__Parser__ = argparse.ArgumentParser(description="EDL Manager",add_help=False)
 
 		__Parser__.add_argument("-v","--version",action="store_true",help="Show version")
 		__Parser__.add_argument("-d","--debug",action="store_true",help="Place app in debug mode")
@@ -1600,88 +1853,102 @@ def BuildParser():
 		__Parser__.add_argument("-p","--prompt",action="store_true",help="Set prompt before actions committed")
 		__Parser__.add_argument("-n","--noprompt", action="store_true",help="Set to no prompting")
 		__Parser__.add_argument("--autosave",action="store_true",help="Set Autosave mode for EDLFile")
+		__Parser__.add_argument("-h","--help",action="store_true",help="Print Help")
 
 		# Create Sub parsers
-		subparsers = __Parser__.add_subparsers(help="Operations on EDL",dest="operation")
+		#subparsers = __Parser__.add_subparsers(help="Operations on EDL",dest="operation")
 
 		# One offs
 
 		# Shell Mode (Completely Interactive Feature)
-		shell_parser = subparsers.add_parser("shell",help="Enter shell mode")
+		#shell_parser = subparsers.add_parser("shell",help="Enter shell mode")
 
 		# Test Mode
-		test_parser = subparsers.add_parser("test",help="Enter Test Code")
+		#test_parser = subparsers.add_parser("test",help="Enter Test Code")
 
 		# Save Command
-		save_parser = subparsers.add_parser("save",help="Save master file contents to EDL File")
-		save_parser.add_argument("edl",nargs="?",default=None,help="Optional EDL file path")
-		save_parser.add_argument("master",nargs="?",default=None,help="Optional masterfile, EDL file must be supplied first")
+		#save_parser = subparsers.add_parser("save",help="Save master file contents to EDL File")
+		#save_parser.add_argument("edl",nargs="?",default=None,help="Optional EDL file path")
+		#save_parser.add_argument("master",nargs="?",default=None,help="Optional masterfile, EDL file must be supplied first")
 
 		# Edit Master File (Completely Interactive Feature)
-		edit_master_parser = subparsers.add_parser("edit",help="Edit Masterfile")
-		edit_master_parser.add_argument("-s","--save",action="store_true",help="Once master edit completes, save EDL")
-		edit_master_parser.add_argument("file",nargs="?",help="File to edit, masterfile by default")
+		#edit_master_parser = subparsers.add_parser("edit",help="Edit Masterfile")
+		#edit_master_parser.add_argument("-s","--save",action="store_true",help="Once master edit completes, save EDL")
+		#edit_master_parser.add_argument("file",nargs="?",help="File to edit, masterfile by default")
 
 		# Backup command (Non-Interactive)
-		backup_parser = subparsers.add_parser("backup",help="Backup data files")
+		#backup_parser = subparsers.add_parser("backup",help="Backup data files")
 
 		# Restore command (Non-Interactive)
-		restore_parser = subparsers.add_parser("restore",help="restore data files")
+		#restore_parser = subparsers.add_parser("restore",help="restore data files")
 
 		# Cull (Non-Interactive Feature)
-		cull_parser = subparsers.add_parser("cull",aliases=["expire"],help="Cull Master/EDL file of older records")
-		cull_parser.add_argument("days",nargs="?",default=None,help="Maximum age of entry in days")
+		#cull_parser = subparsers.add_parser("cull",aliases=["expire"],help="Cull Master/EDL file of older records")
+		#cull_parser.add_argument("days",nargs="?",default=None,help="Maximum age of entry in days")
 
 		# Dump Master File (Completely Interactive)
-		dump_parser = subparsers.add_parser("dump",aliases=["get","getmaster","getm"],help="Dump Master file")
-		dump_parser.add_argument("file_spec",nargs="?",choices=["master","masterfile","edl","edlfile","excludes"],help="Optional file specification")
+		#dump_parser = subparsers.add_parser("dump",aliases=["get","getmaster","getm"],help="Dump Master file")
+		#dump_parser.add_argument("file_spec",nargs="?",choices=["master","masterfile","edl","edlfile","excludes"],help="Optional file specification")
 
 		# More complex sub commands
 
 		# Add Functionality (Partially Interactive Feature)
-		add_parser = subparsers.add_parser("add",help="Add an entry to EDL")
-		add_parser.add_argument("-p","--protect",action="store_true",help="Set protection for record")
-		add_parser.add_argument("host",help="Host to block (by default, IPv4 or hostname")
-		add_parser.add_argument("comment",help="Comment for EDL Entry")
+		#add_parser = subparsers.add_parser("add",help="Add an entry to EDL")
+		#add_parser.add_argument("-p","--protect",action="store_true",help="Set protection for record")
+		#add_parser.add_argument("host",help="Host to block (by default, IPv4 or hostname")
+		#add_parser.add_argument("comment",help="Comment for EDL Entry")
 
 		# Bulk Add (Partially Interactive Feature)
-		bulkadd_parser = subparsers.add_parser("bulkadd",aliases=['ba',"bulk"],help="Bulk Add")
-		bulkadd_parser.add_argument("-p","--protect",action="store_true",help="Set protection")
-		bulkadd_parser.add_argument("file",help="File to import for bulk add")
-		bulkadd_parser.add_argument("comment",nargs="?",help="Bulk comment (optional)")
+		#bulkadd_parser = subparsers.add_parser("bulkadd",aliases=['ba',"bulk"],help="Bulk Add")
+		#bulkadd_parser.add_argument("-p","--protect",action="store_true",help="Set protection")
+		#bulkadd_parser.add_argument("file",help="File to import for bulk add")
+		#bulkadd_parser.add_argument("comment",nargs="?",help="Bulk comment (optional)")
 
 		# Remove (Partially Interactive)
-		remove_parser = subparsers.add_parser("remove",aliases=["rm","del","delete"],help="Remove specified EDL Entry")
-		remove_parser.add_argument("host",help="Host to remove (IP or DNS name)")
+		#remove_parser = subparsers.add_parser("remove",aliases=["rm","del","delete"],help="Remove specified EDL Entry")
+		#remove_parser.add_argument("host",help="Host to remove (IP or DNS name)")
 
 		# Bulk Remove (Partially Interactive)
-		bulkremove_parser = subparsers.add_parser("bulkremove",aliases=["bulkrm","bulkdel","bulkdelete"],help="Bulk Remove")
-		bulkremove_parser.add_argument("file",help="File to import for bulk remove")
+		#bulkremove_parser = subparsers.add_parser("bulkremove",aliases=["bulkrm","bulkdel","bulkdelete"],help="Bulk Remove")
+		#bulkremove_parser.add_argument("file",help="File to import for bulk remove")
+
+		# Status Parser
+		#status_parser = subparsers.add_parser("status",help="Entry Status operations")
+
+		#ss_parser = status_parser.add_subparsers(help="Status operations")
+
+		#search_parser = ss_parser.add_parser("search",help="Search entries by status")
+		#search_parser.add_argument("value",help="Status value to search for")
+		#search_parser.add_argument("op",choices=["eq","ne","lt","le","gt","ge"],default="eq",help="Search operation")
+
+		#modify_parser = ss_parser.add_parser("modify",aliases=["mod"],help="Status modification")
+		#modify_parser.add_argument("ip",help="IP of entry to modify")
+		#modify_parser.add_argument("value",help="New status value")
 
 		# Search (Partially Interactive)
-		search_parser = subparsers.add_parser("search",help="Search Master file")
-		search_parser.add_argument("by_type",choices=["ip","cidr","dns","user","owner","abuse","timestamp"],default="ip",help="Search by given type")
-		search_parser.add_argument("search_str",help="Thing to search for")
+		#search_parser = subparsers.add_parser("search",help="Search Master file")
+		#search_parser.add_argument("by_type",choices=["ip","cidr","dns","user","owner","abuse","timestamp"],default="ip",help="Search by given type")
+		#search_parser.add_argument("search_str",help="Thing to search for")
 
 		# Exclude (Non-Interactive)
-		exclude_parser = subparsers.add_parser("exclude",aliases=["ex"],help="Exclude Host or CIDR Range")
-		exclude_parser.add_argument("host",help="Host or CIDR Range to add to excludes")
-		exclude_parser.add_argument("comment",nargs="?",help="Comment for entry")
+		#exclude_parser = subparsers.add_parser("exclude",aliases=["ex"],help="Exclude Host or CIDR Range")
+		#exclude_parser.add_argument("host",help="Host or CIDR Range to add to excludes")
+		#exclude_parser.add_argument("comment",nargs="?",help="Comment for entry")
 
 		# Remove Exclusion (Partially Interactive)
-		rmexclude_parser = subparsers.add_parser("removeexclude",aliases=["rmex","removeex","rmx","removex"],help="Remove exclusion")
-		rmexclude_parser.add_argument("hosts",help="Host or CIDR to remove from excludes")
+		#rmexclude_parser = subparsers.add_parser("removeexclude",aliases=["rmex","removeex","rmx","removex"],help="Remove exclusion")
+		#rmexclude_parser.add_argument("hosts",help="Host or CIDR to remove from excludes")
 
 		# View/Dump Exclude List (Partially Interactive)
-		viewexclude_parser = subparsers.add_parser("viewexcludes",aliases=["vex","viewx","dumpex","getex"],help="View/Dump/Return excludes list")
+		#viewexclude_parser = subparsers.add_parser("viewexcludes",aliases=["vex","viewx","dumpex","getex"],help="View/Dump/Return excludes list")
 
 		# Check Exclude for item
-		checkex_parser = subparsers.add_parser("checkexcludes",aliases=["chex","checkex"],help="Check excludes for item")
-		checkex_parser.add_argument("exclude",help="Exclude to check for")
+		#checkex_parser = subparsers.add_parser("checkexcludes",aliases=["chex","checkex"],help="Check excludes for item")
+		#checkex_parser.add_argument("exclude",help="Exclude to check for")
 
 		# Edit IP (Completely Interactive)
-		editip_parser = subparsers.add_parser("edithost",aliases=["editip"],help="Edit single host record in master")
-		editip_parser.add_argument("host",help="Host entry to edit")
+		#editip_parser = subparsers.add_parser("edithost",aliases=["editip"],help="Edit single host record in master")
+		#editip_parser.add_argument("host",help="Host entry to edit")
 
 	return __Parser__
 
@@ -1770,6 +2037,9 @@ def run(**kwargs):
 
 	DbgMsg("Entering run",dbglabel="edl")
 
+	shell = EDLShell()
+	#shell.SetParser(__Parser__)
+
 	#
 	# Now Check for actions
 	#
@@ -1777,19 +2047,35 @@ def run(**kwargs):
 	results = None
 	success = True
 
+	help_me = ("-h" in sys.argv or "--help" in sys.argv)
+
+	if len(unknowns) > 0:
+		if help_me:
+			unknowns.append("-h")
+
+		shell.onecmd(" ".join(unknowns))
+	elif help_me:
+		__Parser__.print_help()
+	else:
+		shell.cmdloop()
+
+	quit()
+
 	op = args.operation
 
 	if op == "test":
 		results = test()
 	elif op == "shell" and CmdLineMode():
-		shell = EDLShell()
-		shell.SetParser(__Parser__)
 		shell.cmdloop()
 	elif op == "save":
 		edlfile = args.edl
 		masterfile = args.master
 
 		Save(edlfile,masterfile)
+	elif op == "status":
+		if DebugMode(): breakpoint()
+
+		shell.onecmd(" ".join(sys.argv))
 	elif op == "edit" and CmdLineMode():
 		filename = args.file
 
