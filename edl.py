@@ -688,7 +688,9 @@ class EDLShell(cmd.Cmd):
 
 			entries = Add(args.host,comment=args.comment,protect=args.protect)
 
-			for invalid,exists,entry,excluded,edl_entry in entries:
+			for entry in entries:
+				invalid,exists,entry,excluded,edl_entry = entries.values()
+
 				if not invalid and not exists and not excluded:
 					Msg(f"Added {entry}")
 				elif excluded:
@@ -1437,7 +1439,9 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 		else:
 			# Excluded
 			result["excluded"] = True
-			results.append(tuple(entry.Values()))
+			result["entry"] = entry.GetRow()
+			result["edl_entry"] = entry
+			results.append(result)
 
 		if len(hosts) > 1 and not nosleep:
 			time.sleep(4)
@@ -2185,7 +2189,7 @@ def run(**kwargs):
 		results = Add(host,comment=comment,protect=args.protect)
 
 		for result in results:
-			invalid,existing,entry,excluded,edl_entry = result
+			invalid,existing,entry,excluded,edl_entry = result.values()
 
 			if invalid:
 				Msg(f"Invalid entry - {entry}")
@@ -2200,7 +2204,7 @@ def run(**kwargs):
 					Msg(entry)
 
 			if excluded:
-				Msg(f"{entry[0]} is an excluded address, it was not added to the EDL")
+				Msg(f"{entry['ip']} is an excluded address, it was not added to the EDL")
 
 		success = True
 	elif op in [ "bulkadd","ba","bulk" ]:
