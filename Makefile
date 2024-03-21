@@ -109,6 +109,15 @@ installtool:
 freeze:
 	@$(PYTHONTARGET) -m pip freeze > $(RECFILE)
 
+test:
+	@python3 ./edl.py --debug test
+
+exec:
+ifeq '$(ARGS)' ''
+	@test "$(ARGS)" = "" && printf "You must provide ARGS=''\n"
+else
+	@python3 ./edl.py --debug $(ARGS)
+endif
 
 actions:
 	@printf "prereqs\t\tInstall prereqs\n"
@@ -128,4 +137,5 @@ actions:
 	@printf "cheatrm\tClean up code from cheatinstall\n"
 	@printf "installtool\tInstall edl.py as a cmd line tool in $(BINHOME)"
 	@printf "freeze\t\tFreeze module (output requirements.txt)\n"
+	@printf "test\t\tRun internal test function and exit\n"
 	@printf "clean\t\tClean build dist\n"

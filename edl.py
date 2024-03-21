@@ -23,7 +23,9 @@ consumable EDL automatically.
 The Exclude file, will take IPs or CIDR ranges.
 
 The reason for IPs only, we discovered a bug in Palo Alto's code for consuming EDL's that *really*
-messed up our PA Cluster.
+messed up our PA Cluster. This has likely been fixed by now, but I have left this the default mode
+for now. I made add override code in the future (and then change the default behavior in the way...
+way... way... future.
 
 This module relies on two other modules from the same author, whois-rdap and py-helper-mod.
 You must have them installed for this to work properly.
@@ -199,6 +201,9 @@ class EDLEntry(Taggable):
 	# Get or Set Status
 	def Status(self,value=None):
 		"""Return the status from the EDL Line"""
+
+		# 0 means protected (perma ban)
+		# >0 means days banned
 
 		if value:
 			self.entry["status"] = value
@@ -411,6 +416,7 @@ class EDLShell(cmd.Cmd):
 			self.parsers["add"] = parser = argparse.ArgumentParser(description="Add EDL Sub command")
 
 			parser.add_argument("-p","--protect",action="store_true",help="Set protection for record")
+			parser.add_argument("-b","--ban",help="Ban for supplied days")
 			parser.add_argument("host",help="Host to block (by default, IPv4 or hostname")
 			parser.add_argument("comment",nargs='?',help="Comment for EDL Entry")
 
@@ -444,7 +450,7 @@ class EDLShell(cmd.Cmd):
 
 			ssearch = subparser.add_parser("search",help="Search by status")
 
-			ssearch.add_argument("value",help="Status value to search for")
+			ssearch.add_argument("value",help="Status value to search for, (0|1)")
 			ssearch.add_argument("op",nargs="?",choices=["eq","ne","lt","le","gt","ge"],default="eq",help="Search operation")
 
 			modify = subparser.add_parser("modify",help="Modify entry status")
@@ -474,6 +480,15 @@ class EDLShell(cmd.Cmd):
 		elif args.operation in [ "false", "disable" ]:
 			Msg("Disabling debug mode")
 			DebugMode(False)
+
+	# Enter Internal Test (done)
+	def do_test(self,arguments):
+		"""
+		Enter Internal Test Mode
+		"""
+
+		# Test is expected to do it's own cmdlime parsing
+		test(arguments)
 
 	# Create All Files (done)
 	def do_create(self,arguments):
@@ -654,10 +669,13 @@ class EDLShell(cmd.Cmd):
 		try:
 			args, unknowns = self.parsers["add"].parse_known_args(arguments)
 
-			status = 0
+			status = 90
 
 			if args.protect:
-				status = 1
+				status = 0
+
+			if args.ban:
+				status = int(args.ban)
 
 			comment = args.comment
 
@@ -670,8 +688,15 @@ class EDLShell(cmd.Cmd):
 
 			entries = Add(args.host,comment=args.comment,protect=args.protect)
 
-			for entry in entries:
-				Msg(f"Added {entry}")
+			for invalid,exists,entry,excluded,edl_entry in entries:
+				if not invalid and not exists and not excluded:
+					Msg(f"Added {entry}")
+				elif excluded:
+					Msg(f"Excluded {entry}")
+				elif exists:
+					Msg(f"Exists {entry}")
+				elif invalid:
+					Msg(f"Invalid {entry}")
 		except SystemExit:
 			pass
 
@@ -854,6 +879,7 @@ class EDLShell(cmd.Cmd):
 		"""Show Information About Data"""
 
 		global EDLMaster, EDLFile, Excludes, AuditFile, DMEDLFile
+		global D_EDLMaster, D_EDLFile, __Config__, LastAdd
 		global MaxAge, LastAdd, Responses, Version
 		global __EnvEDLMaster__, __EnvEDLFile__, __EnvEDLExcludes__,__EnvComment__
 
@@ -872,7 +898,8 @@ class EDLShell(cmd.Cmd):
 		Msg("{:<20} : {} {}".format("EDL Master File",EDLMaster,GetInfo(EDLMaster)))
 		Msg("{:<20} : {} {}".format("EDL File",EDLFile,GetInfo(EDLFile)))
 		Msg("{:<20} : {} {}".format("Exclude File",Excludes,GetInfo(Excludes)))
-		Msg("{:<20} : {} {}".format("Test EDL File",DMEDLFile,GetInfo(DMEDLFile)))
+		Msg("{:<20} : {} {}".format("Test EDL Master",D_EDLMaster,GetInfo(D_EDLMaster)))
+		Msg("{:<20} : {} {}".format("Test EDL File",D_EDLFile,GetInfo(D_EDLFile)))
 		Msg("{:<20} : {}".format("Audit File",AuditFile))
 		Msg("{:<20} : {} days".format("MaxAge",MaxAge.days))
 		Msg("{:<20} : {}".format("LastAdd",LastAdd))
@@ -919,6 +946,10 @@ __Config__ = "/etc/edl/config"
 
 # Response list
 Responses = list()
+
+# Debug Files
+D_EDLMaster = "/tmp/edlmaster.csv"
+D_EDLFile = "/tmp/edl.test.txt"
 
 # Test File
 DMEDLFile="/tmp/edl.test.txt"
@@ -1325,7 +1356,7 @@ def AddEDLEntry(entry,masterfile=None,edlfile=None):
 	return (success,excluded,existing)
 
 # Add IP (or list of IPs, or DNS Names) To EDL Master
-def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect=False,nosleep=False,masterfile=None,edlfile=None):
+def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect=90,nosleep=False,masterfile=None,edlfile=None):
 	"""Add Host/List of Hosts/Subnets/List of subnets/DNS names to EDL Master"""
 
 	global LastAdd, Responses, EDLRowTemplate
@@ -1416,7 +1447,7 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 	return results
 
 # Bulk Add
-def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect=False,masterfile=None,edlfile=None):
+def BulkAdd(fname,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect=90,masterfile=None,edlfile=None):
 	"""
 	Bulk add file of IP address to EDL. The file should be one IP per line.
 	"""
@@ -1555,9 +1586,9 @@ def Cull(max_age=None,masterfile=None,edlfile=None,simulate=False):
 
 	if masterfile == None: masterfile = EDLMaster
 
-	if max_age == None:
-		max_age = MaxAge
-	else:
+	too_old = datetime.now() + timedelta(days=365)
+
+	if max_age is not None:
 		if type(max_age) == str and max_age.isdigit():
 			max_age = timedelta(days=int(max_age))
 		elif type(max_age) == int:
@@ -1567,7 +1598,7 @@ def Cull(max_age=None,masterfile=None,edlfile=None,simulate=False):
 		else:
 			max_age = MaxAge
 
-	too_old = datetime.now() - max_age
+		too_old = datetime.now() - max_age
 
 	matches = list()
 
@@ -1584,17 +1615,16 @@ def Cull(max_age=None,masterfile=None,edlfile=None,simulate=False):
 			entry = EDLEntry()
 			entry.ReadRow(row)
 
-			if entry.Status():
-				# 0 means no status (i.e. not protected, so we allow culling)
-				# If status is non-zero, we do not cull this record, it must
-				# be manually deleted. By default, a value of 1 indicates
-				# a perma-ban (a no cull record), however, I reserve the
-				# option that values other than 0 and 1 could communicate
-				# other status' in the future. That fact that they are not
-				# 1 and non-zero implies they are not automatically cullable
+			if entry.Status() == 0:
+				# 0 means no ban day count (i.e. protected, so we don't allow
+				# culling)
+				# if status is non-zero, then the value indicates the days it
+				# should remain untouched.
 				continue
 
-			if entry.Timestamp() <= too_old:
+			removal_date = entry.Timestamp() + timedelta(days=entry.Status())
+
+			if (max_age is None and datetime.now() > removal_date) or (entry.Timestamp() >= too_old):
 				DbgMsg(f"removing {row['ip']}")
 				Audit(f"{entry.IP()} was culled from edl, inserted on {entry.Timestamp()}")
 				matches.append(entry.IP())
@@ -1817,21 +1847,37 @@ def EditEntry(ip,masterfile=None,edlfile=None):
 def PrepDebug():
 	"""Prep the module for DebugMode, which include operating on a temporary copy of the EDL"""
 
-	global EDLFile, DMEDLFile
+	global EDLMaster, EDLFile, D_EDLMaster, D_EDLFile
 	# Copies current EDLFile to temp and
-	# switchs to temp file for test operations
+	# switches to temp file for test operations
 	# This way the actual EDLFile does not get messed up by accident
 
 	DebugMode(True)
 
-	print("Entering Debug Mode...")
+	Msg("Entering Debug Mode...")
 
-	# Setup working file
-	shutil.copyfile(EDLFile,DMEDLFile)
+	# Setup working file(s)
+	if not os.path.exists(D_EDLMaster):
+		shutil.copyfile(EDLMaster,D_EDLMaster)
+	if not os.path.exists(D_EDLFile):
+		shutil.copyfile(EDLFile,D_EDLFile)
 
-	EDLFile=DMEDLFile
+	EDLMaster = D_EDLMaster
+	EDLFile=D_EDLFile
 
-	print("Working EDL is now {}".format(EDLFile))
+	Msg("Working Master is not {}".format(EDLMaster))
+	Msg("Working EDL is now {}".format(EDLFile))
+
+# Clear Test Files
+def ClearTests():
+	"""Clear Test Files"""
+
+	global D_EDLMaster, D_EDLFile
+
+	if os.path.exists(D_EDLMaster):
+		os.remove(D_EDLMaster)
+	if os.path.exists(D_EDLFile):
+		os.remove(D_EDLFile)
 
 # Build Parser
 def BuildParser():
@@ -1845,6 +1891,8 @@ def BuildParser():
 
 		__Parser__.add_argument("-v","--version",action="store_true",help="Show version")
 		__Parser__.add_argument("-d","--debug",action="store_true",help="Place app in debug mode")
+		__Parser__.add_argument("-c","--clear",action="store_true",help="Remove test files")
+		__Parser__.add_argument("--test",action="store_true",help="Run internal tests")
 		__Parser__.add_argument("--noipv6",action="store_true",help="IPv6 addresses are not accepted")
 		__Parser__.add_argument("--master",help="Set Master file")
 		__Parser__.add_argument("--edl",help="Set EDL Data file")
@@ -1970,8 +2018,12 @@ def ParseArgs(arguments=None):
 	# Set State Items that need to come first
 	#
 
+	# Clear Test File(s)
+	if args.clear:
+		ClearTests()
+
 	# Set Debug Mode
-	if args.debug:
+	if args.debug and not DebugMode():
 		PrepDebug()
 
 	if args.noipv6:
@@ -2019,9 +2071,13 @@ def run(**kwargs):
 
 	global EDLMaster, EDLFile, __Parser__
 
+	DbgMsg("Entering run",dbglabel="edl")
+
 	# Check Kwargs
 
+	# Provided Arguments (optional)
 	arguments = kwargs.get("arguments",None)
+	# Processed Args (optional)
 	args = kwargs.get("args",None)
 
 	# Make sure EDL Exists, if not, provision a new one
@@ -2029,16 +2085,15 @@ def run(**kwargs):
 		Touch(EDLFile)
 
 	if args == None:
-		# Parse 'dem args my brother
-		if arguments != None:
+		# If no processed args, we assume either arguments were provided OR
+		# We go with the actual command line args if not.
+
+		if arguments is not None:
 			args,unknowns = ParseArgs(arguments)
 		else:
 			args,unknowns = ParseArgs()
 
-	DbgMsg("Entering run",dbglabel="edl")
-
 	shell = EDLShell()
-	#shell.SetParser(__Parser__)
 
 	#
 	# Now Check for actions
@@ -2056,16 +2111,14 @@ def run(**kwargs):
 		shell.onecmd(" ".join(unknowns))
 	elif help_me:
 		__Parser__.print_help()
-	else:
-		shell.cmdloop()
 
 	quit()
 
 	op = args.operation
 
-	if op == "test":
+	if op == "test" or args.test:
 		results = test()
-	elif op == "shell" and CmdLineMode():
+	elif (op == "shell" or op is None or op == "") and CmdLineMode():
 		shell.cmdloop()
 	elif op == "save":
 		edlfile = args.edl
@@ -2237,9 +2290,10 @@ Initialize()
 #
 
 # Run Test
-def test():
+def test(arguments):
 	"""Test stub"""
-	PrepDebug()
+
+	if not DebugMode(): PrepDebug()
 
 	DbgMsg("Life is THE test... don't fail it.")
 
