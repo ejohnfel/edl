@@ -689,16 +689,16 @@ class EDLShell(cmd.Cmd):
 			entries = Add(args.host,comment=args.comment,protect=args.protect)
 
 			for entry in entries:
-				invalid,exists,entry,excluded,edl_entry = entries.values()
+				invalid,exists,entry,excluded,edl_entry = entry
 
 				if not invalid and not exists and not excluded:
-					Msg(f"Added {entry}")
+					Msg(f"Added {edl_entry.GetRow()}")
 				elif excluded:
-					Msg(f"Excluded {entry}")
+					Msg(f"Excluded {edl_entry.GetRow()}")
 				elif exists:
-					Msg(f"Exists {entry}")
+					Msg(f"Exists {edl_entry.GetRow()}")
 				elif invalid:
-					Msg(f"Invalid {entry}")
+					Msg(f"Invalid {edl_entry.GetRow()}")
 		except SystemExit:
 			pass
 
@@ -711,8 +711,6 @@ class EDLShell(cmd.Cmd):
 		arguments = ph.ParseDelimitedString(arguments)
 
 		args,unknowns = self.parsers["bulkadd"].parse_known_args(arguments)
-
-		if DebugMode(): breakpoint()
 
 		comment = args.comment if args.comment != '' else None
 
@@ -1427,7 +1425,10 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 					entry.GetWhois()
 
 				AppendToEDL(entry,masterfile=masterfile,edlfile=edlfile)
-				result["entry"] = list(entry.GetRow())
+
+				if DebugMode(): breakpoint()
+
+				result["entry"] = list(entry.GetRow().values())
 				result["edl_entry"] = entry
 				results.append(tuple(result.values()))
 			else:
@@ -2130,8 +2131,6 @@ def run(**kwargs):
 
 		Save(edlfile,masterfile)
 	elif op == "status":
-		if DebugMode(): breakpoint()
-
 		shell.onecmd(" ".join(sys.argv))
 	elif op == "edit" and CmdLineMode():
 		filename = args.file
@@ -2189,7 +2188,7 @@ def run(**kwargs):
 		results = Add(host,comment=comment,protect=args.protect)
 
 		for result in results:
-			invalid,existing,entry,excluded,edl_entry = result.values()
+			invalid,existing,entry,excluded,edl_entry = result
 
 			if invalid:
 				Msg(f"Invalid entry - {entry}")

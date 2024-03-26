@@ -112,6 +112,9 @@ freeze:
 test:
 	@python3 ./edl.py --debug test
 
+debug: exec
+	@printf "Running in debug mode\n"
+
 exec:
 ifeq '$(ARGS)' ''
 	@test "$(ARGS)" = "" && printf "You must provide ARGS=''\n"
@@ -134,8 +137,9 @@ actions:
 	@printf "upgrade\t\tUpgrade the package\n"
 	@printf "actions\t\tThis list\n"
 	@printf "cheatinstall\tDo the cp /usr/lib thing\n"
-	@printf "cheatrm\tClean up code from cheatinstall\n"
-	@printf "installtool\tInstall edl.py as a cmd line tool in $(BINHOME)"
+	@printf "cheatrm\t\tClean up code from cheatinstall\n"
+	@printf "installtool\tInstall edl.py as a cmd line tool in $(BINHOME)\n"
 	@printf "freeze\t\tFreeze module (output requirements.txt)\n"
 	@printf "test\t\tRun internal test function and exit\n"
+	@printf "exec\t\tRun with ARGS in debug mode\n"
 	@printf "clean\t\tClean build dist\n"
