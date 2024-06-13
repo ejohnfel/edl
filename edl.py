@@ -500,6 +500,17 @@ class EDLShell(cmd.Cmd):
 			parser.add_argument("--show",action="store_true",help="Show culled items after culling")
 			parser.add_argument("days",nargs="?",help="Max age in days, optional")
 
+		if not "exclude" in self.parsers:
+			self.parsers["exclude"] = parser = argparse.ArgumentParser(description="Exclude an IP from blocks")
+			parser.add_argument("host", help="Exclude Host or CIDR Range")
+			parser.add_argument("comment",nargs="?",help="Comment for entry")
+		if not "rmexclude" in self.parsers:
+			self.parsers["rmexclude"] = parser = argparse.ArgumentParser(description="Remove excluded IP")
+			parser.add_argument("hosts",help="Host or CIDR to remove from excludes")
+		if not "showexcludes" in self.parsers:
+			self.parsers["showexcludes"] = parser = argparse.ArgumentParser(description="Show excludes")
+			parser.add_argument("pattern",nargs="*", help="Optional search pattern")
+
 	# Get or Set Debugmode (done)
 	def do_debug(self,arguments):
 		"""Get or set DebugMode"""
@@ -622,20 +633,6 @@ class EDLShell(cmd.Cmd):
 
 		Msg(f"EDL file is currently {EDLFile}/{EDLFile_FQDN}")
 
-	# Get or Set Excludes File
-	def do_excludes(self,arguments):
-		"""Get or Set Excludes File"""
-
-		global Excludes
-
-		if arguments != None and arguments != "":
-			Excludes = arguments
-
-			if not os.path.exists(Excludes):
-				Touch(Excludes)
-
-		Msg(f"Excludes file is currently {Excludes}")
-
 	# Add Comment To Responses
 	def do_comment(self,arguments):
 		"""Add comments to responses"""
@@ -689,6 +686,20 @@ class EDLShell(cmd.Cmd):
 			Msg(f"{ip}")
 		for fqdn in fqdns:
 			Msg(f"{fqdn}")
+
+	# Get or Set Excludes File
+	def do_excludes(self,arguments):
+		"""Get or Set Excludes File"""
+
+		global Excludes
+
+		if arguments != None and arguments != "":
+			Excludes = arguments
+
+			if not os.path.exists(Excludes):
+				Touch(Excludes)
+
+		Msg(f"Excludes file is currently {Excludes}")
 
 	# Command handlers
 
@@ -942,8 +953,26 @@ class EDLShell(cmd.Cmd):
 		except SystemExit:
 			pass
 
+	# Exclude Operations
+
+	# Exclude IP or CIDR
+	def do_exclude(self, arguments):
+		global Excludes
+
+		if not "exclude" in self.parsers: self.InitParsers()
+
+		try:
+			args, unknwowns = self.parsers["dump"].parse_known_args(arguments)
+
+			host = args.host
+			comment = args.comment
+
+			if DebugMode(): breakpoint()
+		except Exception as err:
+			Msg(f"Shiite : {err}")
+
 	# Show Data Information
-	def do_info(self,args):
+	def do_info(self,arguments):
 		"""Show Information About Data"""
 
 		global EDLMaster, EDLFile, Excludes, AuditFile, DMEDLFile
@@ -1026,6 +1055,7 @@ DMEDLFile="/tmp/edl.test.txt"
 EDLMaster = "/tmp/edlmaster.csv"
 # EDL File(s)
 EDLFile="/tmp/edl.txt"
+# EDL with Domain Names
 EDLFile_FQDN="/tmp/edl_fqdn.txt"
 # Exclude File
 Excludes="/tmp/edl-excl.txt"
@@ -1068,7 +1098,7 @@ def EDLFileToFQDN(pathname):
 	basename = os.path.basename(pathname)
 	root,ext = os.path.splitext(basename)
 
-	fqdn_name = os.path.join(parent,f"{root}_fqdn",ext)
+	fqdn_name = os.path.join(parent,f"{root}_fqdn{ext}")
 
 	return fqdn_name
 
@@ -1564,8 +1594,6 @@ def Add(host,user=None,timestamp=None,owner=None,abuse=None,comment=None,protect
 
 				AppendToEDL(entry,masterfile=masterfile,edlfile=edlfile,edlfile_fqdn=edlfile_fqdn)
 
-				if DebugMode(): breakpoint()
-
 				result["entry"] = list(entry.GetRow().values())
 				result["edl_entry"] = entry
 				results.append(tuple(result.values()))
@@ -2034,7 +2062,7 @@ def PrepDebug():
 	EDLFile_FQDN = D_EDLFile_FQDN
 
 	Msg("Working Master is not {}".format(EDLMaster))
-	Msg("Working EDL is now {}/{}".format(EDLFile, EDLFile_FQDN))
+	Msg("Working EDLs are now {}, {}".format(EDLFile, EDLFile_FQDN))
 
 # Clear Test Files
 def ClearTests():
@@ -2267,6 +2295,9 @@ def run(**kwargs):
 		else:
 			args,unknowns = ParseArgs()
 
+	if DebugMode():
+		breakpoint()
+
 	shell = EDLShell()
 
 	#
@@ -2279,13 +2310,20 @@ def run(**kwargs):
 	help_me = ("-h" in sys.argv or "--help" in sys.argv)
 
 	if len(unknowns) > 0:
+		# If some things have not been parsed, assume the shell is responsible
+		# THIS IS THE MAIN BODY OF THE CODE to enter the onecmd() of the shell
+
 		if help_me:
+			# Since we disabled global help processing, if help is asked for, append it
 			unknowns.append("-h")
 
+		# Shell me baby...
 		shell.onecmd(" ".join(unknowns))
 	elif help_me:
+		# If no commands, just print help and exit
 		__Parser__.print_help()
 
+	# Quit here temporarily to enable only cmd_shell processing
 	quit()
 
 	###
