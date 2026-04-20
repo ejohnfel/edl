@@ -966,8 +966,6 @@ class EDLShell(cmd.Cmd):
 
 			host = args.host
 			comment = args.comment
-
-			if DebugMode(): breakpoint()
 		except Exception as err:
 			Msg(f"Shiite : {err}")
 
@@ -1032,7 +1030,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,41)
+VERSION=(0,0,42)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1425,7 +1423,7 @@ def Search(search_str,by_type="ip",exit_early=False,silent=False,masterfile=None
 				hits.append(entry)
 
 				if exit_early: break
-				
+
 	return hits
 
 # Append TO EDL
@@ -1467,7 +1465,7 @@ def AppendToEDL(entry,masterfile=None,edlfile=None,edlfile_fqdn=None):
 	else:
 		if not os.path.exists(masterfile):
 			CreateMaster(masterfile=masterfile)
-		
+
 		with open(masterfile,"a",newline="") as csvfile:
 			writer = csv.DictWriter(csvfile,Columns)
 
@@ -2294,9 +2292,6 @@ def run(**kwargs):
 			args,unknowns = ParseArgs(arguments)
 		else:
 			args,unknowns = ParseArgs()
-
-	if DebugMode():
-		breakpoint()
 
 	shell = EDLShell()
 
