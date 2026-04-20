@@ -891,6 +891,11 @@ class EDLShell(cmd.Cmd):
 				Msg(result)
 		except SystemExit:
 			pass
+		except Exception as err:
+			ErrMsg(err,"An error occured while trying to search the edl file(s)")
+
+			if DebugMode():
+				breakpoint()
 
 	# Cull
 	def do_cull(self,args):
