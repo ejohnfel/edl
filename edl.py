@@ -416,8 +416,8 @@ class EDLShell(cmd.Cmd):
 		if not "save" in self.parsers:
 			# Save Parser
 			self.parsers["save"] = parser = argparse.ArgumentParser(description="Save EDL sub command")
-			parser.add_argument("edl",help="EDL file to save to")
-			parser.add_argument("master",help="Master file for EDL")
+			parser.add_argument("--edl",help="Optional EDL file to save to")
+			parser.add_argument("--master",help="Optional Master file for EDL")
 
 		if not "add" in self.parsers:
 			# Add Functionality (Partially Interactive Feature)
@@ -1152,7 +1152,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,45)
+VERSION=(0,0,46)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
