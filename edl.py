@@ -678,7 +678,7 @@ class EDLShell(cmd.Cmd):
 	def do_dns(self,arguments):
 		"""Do DNS Check For Arguments"""
 
-		hosts = re.split("\s+",arguments)
+		hosts = re.split(r"\s+",arguments)
 
 		iplist, fqdns = HostCheck(hosts)
 
@@ -1030,7 +1030,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,42)
+VERSION=(0,0,43)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1151,7 +1151,7 @@ def Timestamp(timestamp=None):
 
 	tsc = TimestampConverter()
 
-	reg_ex = "^\d{1,2}/\d{1,2}/\d{4}$\s+ \d{1,2}\:\d{1,2}\:\d{1,2}\s+([aA]|[pP])[mM]$"
+	reg_ex = r"^\d{1,2}/\d{1,2}/\d{4}$\s+ \d{1,2}\:\d{1,2}\:\d{1,2}\s+([aA]|[pP])[mM]$"
 	fmt = Timeformat
 
 	tsc.AddTimeFormat(reg_ex,fmt)
