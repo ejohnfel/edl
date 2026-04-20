@@ -365,33 +365,10 @@ class EDLShell(cmd.Cmd):
 		# Restore command (Non-Interactive)
 		#restore_parser = subparsers.add_parser("restore",help="restore data files")
 
-		# Cull (Non-Interactive Feature)
-		#cull_parser = subparsers.add_parser("cull",aliases=["expire"],help="Cull Master/EDL file of older records")
-		#cull_parser.add_argument("days",nargs="?",default=None,help="Maximum age of entry in days")
-
-		# Dump Master File (Completely Interactive)
-		#dump_parser = subparsers.add_parser("dump",aliases=["get","getmaster","getm"],help="Dump Master file")
-		#dump_parser.add_argument("file_spec",nargs="?",choices=["master","masterfile","edl","edlfile","excludes"],help="Optional file specification")
-
-		# More complex sub commands
-
-		# Remove (Partially Interactive)
-		#remove_parser = subparsers.add_parser("remove",aliases=["rm","del","delete"],help="Remove specified EDL Entry")
-		#remove_parser.add_argument("host",help="Host to remove (IP or DNS name)")
-
-		# Bulk Remove (Partially Interactive)
-		#bulkremove_parser = subparsers.add_parser("bulkremove",aliases=["bulkrm","bulkdel","bulkdelete"],help="Bulk Remove")
-		#bulkremove_parser.add_argument("file",help="File to import for bulk remove")
-
 		# Search (Partially Interactive)
 		#search_parser = subparsers.add_parser("search",help="Search Master file")
 		#search_parser.add_argument("by_type",choices=["ip","cidr","dns","user","owner","abuse","timestamp"],default="ip",help="Search by given type")
 		#search_parser.add_argument("search_str",help="Thing to search for")
-
-		# Exclude (Non-Interactive)
-		#exclude_parser = subparsers.add_parser("exclude",aliases=["ex"],help="Exclude Host or CIDR Range")
-		#exclude_parser.add_argument("host",help="Host or CIDR Range to add to excludes")
-		#exclude_parser.add_argument("comment",nargs="?",help="Comment for entry")
 
 		# Remove Exclusion (Partially Interactive)
 		#rmexclude_parser = subparsers.add_parser("removeexclude",aliases=["rmex","removeex","rmx","removex"],help="Remove exclusion")
@@ -449,7 +426,7 @@ class EDLShell(cmd.Cmd):
 
 			parser.add_argument("-p","--protect",action="store_true",help="Set protection for record")
 			parser.add_argument("-b","--ban",help="Ban for supplied days")
-			parser.add_argument("host",help="Host to block (by default, IPv4 or hostname")
+			parser.add_argument("host",help="Host to block (by default, IPv4 or hostname)")
 			parser.add_argument("comment",nargs='?',help="Comment for EDL Entry")
 
 		if not "bulkadd" in self.parsers:
@@ -474,6 +451,13 @@ class EDLShell(cmd.Cmd):
 			self.parsers["bulkremove"] = parser = argparse.ArgumentParser(description="Bulk Remove sub command")
 
 			parser.add_argument("filenames",nargs="+",help="Files containing hosts to remove")
+
+		if not "search" in self.parsers:
+			# Search EDL (Partially Interactive)
+			self.parsers["search"] = parser = argparse.ArgumentParser(prog="search", description="Search sub command")
+
+			parser.add_argument("by_type",choices=["ip","cidr","dns","user","owner","abuse","timestamp"],default="ip",help="Search by given type")
+			parser.add_argument("search_str",help="Thing to search for")
 
 		if not "status" in self.parsers:
 			# Status Parser
@@ -511,6 +495,16 @@ class EDLShell(cmd.Cmd):
 			self.parsers["showexcludes"] = parser = argparse.ArgumentParser(description="Show excludes")
 			parser.add_argument("pattern",nargs="*", help="Optional search pattern")
 
+	# Debug Help
+	def help_debug(self,args):
+		"""Print Debug Help"""
+
+		if not "debug" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["debug"]
+
+		pr.print_help()
+
 	# Get or Set Debugmode (done)
 	def do_debug(self,arguments):
 		"""Get or set DebugMode"""
@@ -538,6 +532,16 @@ class EDLShell(cmd.Cmd):
 
 		# Test is expected to do it's own cmdlime parsing
 		test(arguments)
+
+	# Create Help
+	def help_create(self,args):
+		"""Print Create Help"""
+
+		if not "create" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["create"]
+
+		pr.print_help()
 
 	# Create All Files (done)
 	def do_create(self,arguments):
@@ -703,6 +707,16 @@ class EDLShell(cmd.Cmd):
 
 	# Command handlers
 
+	# Save Help
+	def help_save(self,args):
+		"""Print Save Help"""
+
+		if not "save" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["save"]
+
+		pr.print_help()
+
 	# Save EDL File
 	def do_save(self,arguments):
 		"""Save EDL File"""
@@ -723,6 +737,16 @@ class EDLShell(cmd.Cmd):
 			Save(edlfile,edlfile_fqdn,masterfile)
 		except SystemExit:
 			pass
+
+	# Add To EDL Help
+	def help_add(self,args):
+		"""Add Help"""
+
+		if not "add" in self.parsers: self.InitParsers()
+
+		addp = self.parsers["add"]
+
+		addp.print_help()
 
 	# Add To EDL (done)
 	def do_add(self,arguments):
@@ -770,6 +794,16 @@ class EDLShell(cmd.Cmd):
 		except SystemExit:
 			pass
 
+	# BulkAdd Help
+	def help_bulkadd(self,args):
+		"""Print Bulkadd Help"""
+
+		if not "bulkadd" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["bulkadd"]
+
+		pr.print_help()
+
 	# Bulk Add (done)
 	def do_bulkadd(self,arguments):
 		"""Bulk Add"""
@@ -784,6 +818,16 @@ class EDLShell(cmd.Cmd):
 
 		for fname in args.filenames:
 			BulkAdd(fname,comment,protect=args.protect)
+
+	# Remove Help
+	def help_remove(self,args):
+		"""Print Remove Help"""
+
+		if not "remove" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["remove"]
+
+		pr.print_help()
 
 	# Remove From EDL (done)
 	def do_remove(self,arguments):
@@ -802,17 +846,39 @@ class EDLShell(cmd.Cmd):
 		else:
 			Msg(f"{args.host} not found in masterfile")
 
+	# Remove Help alias
+	def help_del(self,args):
+		"""Print del/remove Help"""
+
+		self.help_remove(args)
+
 	# Remove Alias (done)
 	def do_del(self,arguments):
 		"""Remove Alias"""
 
 		self.do_remove(arguments)
 
+	# Rm/Remove Help
+	def help_rm(self,args):
+		"""Print Rm Help"""
+
+		self.help_remove(args)
+
 	# Remove Alias (done)
 	def do_rm(self,arguments):
 		"""Remove Alias"""
 
 		self.do_remove(arguments)
+
+	# Bulkremove Help
+	def help_bulkremove(self,args):
+		"""Print Bulkremove Help"""
+
+		if not "bulkremove" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["bulkremove"]
+
+		pr.print_help()
 
 	# Bulk Remove (done)
 	def do_bulkremove(self,arguments):
@@ -827,11 +893,27 @@ class EDLShell(cmd.Cmd):
 		for fname in args.filenames:
 			BulkRemove(fname)
 
+	# bulkrm Help
+	def help_bulkrm(self,args):
+		"""Print bulkrm Help"""
+
+		self.help_bulkremove(args)
+
 	# Bulk Remove (done)
 	def do_bulkrm(self,arguments):
 		"""Bulk Remove"""
 
 		self.do_bulkremove(arguments)
+
+	# Status Help
+	def help_status(self,args):
+		"""Print Status Help"""
+
+		if not "status" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["status"]
+
+		pr.print_help()
 
 	# Status Search (done)
 	def do_status(self,arguments):
@@ -870,20 +952,28 @@ class EDLShell(cmd.Cmd):
 		except Exception as err:
 			ErrMsg(err,"An error occured when trying search by status")
 
+	# Search Help
+	def help_search(self,args):
+		"""Print Search Help"""
+
+		if not "search" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["search"]
+
+		pr.print_help()
+
 	# Search From EDL
 	def do_search(self,arguments):
 		"""Search EDL"""
 
-		params = list()
+		if not "search" in self.parsers: self.InitParsers()
 
-		params.append("search")
+		parser = self.parsers["search"]
 
-		targs = ph.ParseDelimitedString(arguments)
-
-		params.extend(targs)
+		p_args = arguments.split(" ")
 
 		try:
-			args,unknowns = ParseArgs(arguments=params)
+			args = parser.parse_args(p_args)
 
 			results = Search(args.search_str,by_type=args.by_type)
 
@@ -894,8 +984,15 @@ class EDLShell(cmd.Cmd):
 		except Exception as err:
 			ErrMsg(err,"An error occured while trying to search the edl file(s)")
 
-			if DebugMode():
-				breakpoint()
+	# Cull Help
+	def help_cull(self,args):
+		"""Print Cull Help"""
+
+		if not "cull" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["cull"]
+
+		pr.print_help()
 
 	# Cull
 	def do_cull(self,args):
@@ -923,6 +1020,16 @@ class EDLShell(cmd.Cmd):
 				buffer += f"{item}\n"
 
 			ph.Page(buffer)
+
+	# Dump Help
+	def help_dump(self,args):
+		"""Print Dump Help"""
+
+		if not "dump" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["dump"]
+
+		pr.print_help()
 
 	# Dump File (done)
 	def do_dump(self,arguments):
@@ -959,6 +1066,16 @@ class EDLShell(cmd.Cmd):
 			pass
 
 	# Exclude Operations
+
+	# Exclude Help
+	def help_exclude(self,args):
+		"""Print Exclude Help"""
+
+		if not "exclude" in self.parsers: self.InitParsers()
+
+		pr = self.parsers["exclude"]
+
+		pr.print_help()
 
 	# Exclude IP or CIDR
 	def do_exclude(self, arguments):
@@ -1035,7 +1152,7 @@ NoPrompt=False
 AutoSave=False
 
 # Version
-VERSION=(0,0,44)
+VERSION=(0,0,45)
 Version = __version__ = ".".join([ str(x) for x in VERSION ])
 
 # Parser
@@ -1946,7 +2063,7 @@ def DirectEditEDL():
 		filename = EDLFile_FQDN
 	else:
 		return
-	
+
 	reply = "y"
 
 	if not NoPrompt:
@@ -2080,8 +2197,8 @@ def ClearTests():
 	if os.path.exists(D_EDLFile_FQDN):
 		os.remove(D_EDLFile_FQDN)
 
-# Build Parser
-def BuildParser():
+# Build Global Parser
+def BuildGlobalParser():
 	"""Build Parser"""
 
 	global __Parser__
@@ -2101,7 +2218,7 @@ def BuildParser():
 		__Parser__.add_argument("--age",help="Set maximum age in days for cull operations")
 		__Parser__.add_argument("-p","--prompt",action="store_true",help="Set prompt before actions committed")
 		__Parser__.add_argument("-n","--noprompt", action="store_true",help="Set to no prompting")
-		__Parser__.add_argument("--autosave",action="store_true",help="Set Autosave mode for EDLFile")
+		# __Parser__.add_argument("--autosave",action="store_true",help="Set Autosave mode for EDLFile")
 		__Parser__.add_argument("-h","--help",action="store_true",help="Print Help")
 
 		# Create Sub parsers
@@ -2259,8 +2376,8 @@ def ParseArgs(arguments=None):
 		NoPrompt = True
 
 	# Check Autosave
-	if args.autosave:
-		AutoSave = True
+	#if args.autosave:
+	#	AutoSave = True
 
 	if args.version:
 		Msg(f"Version : {Version}")
@@ -2290,7 +2407,7 @@ def run(**kwargs):
 		Touch(EDLFile_FQDN)
 
 	if args == None:
-		# If no processed args, we assume either arguments were provided OR
+		# If no processed args, we assume either arguments weren't provided OR
 		# We go with the actual command line args if not.
 
 		if arguments is not None:
@@ -2322,6 +2439,7 @@ def run(**kwargs):
 	elif help_me:
 		# If no commands, just print help and exit
 		__Parser__.print_help()
+		shell.do_help([])
 
 	# Quit here temporarily to enable only cmd_shell processing
 	quit()
@@ -2484,7 +2602,7 @@ def Initialize():
 	if comment:
 		AddResponse(comment)
 
-	BuildParser()
+	BuildGlobalParser()
 
 
 # Init Instance
