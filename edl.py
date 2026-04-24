@@ -97,7 +97,6 @@ class EDLEntry(Taggable):
 	"""
 	Wrapper around an EDL Row line in the EDL file
 	"""
-	entry = None
 
 	# Init Instance
 	def __init__(self,**kwargs):
