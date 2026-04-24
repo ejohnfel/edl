@@ -105,6 +105,8 @@ class EDLEntry(Taggable):
 
 		super().__init__()
 
+		self.entry = None
+
 		entry = kwargs.get("entry",None)
 
 		item = kwargs.get("ip",None)
