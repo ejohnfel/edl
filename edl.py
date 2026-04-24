@@ -109,7 +109,7 @@ class EDLEntry(Taggable):
 
 		entry = kwargs.get("entry",None)
 
-		item = kwargs.get("ip",None)
+		item = kwargs.get("item",None)
 		user = kwargs.get("user",None)
 		timestamp = kwargs.get("timestamp",datetime.now())
 		owner = kwargs.get("owner",None)
